@@ -1,0 +1,21 @@
+{
+  "name": "screen-recorder-installer",
+  "version": "1.0.64",
+  "description": "Installer for Screen Recorder",
+  "author": "Tim David Saxen",
+  "main": "viewer/main.js",
+  "private": true,
+  "scripts": {
+    "build": "electron-builder build --windows --project .."
+  },
+  "devDependencies": {
+    "electron": "^41.2.1",
+    "electron-builder": "^24.13.3"
+  },
+  "dependencies": {
+    "better-sqlite3": "^12.9.0",
+    "electron-store": "^10.0.0",
+    "screenshot-desktop": "^1.15.3",
+    "tesseract.js": "^7.0.0"
+  }
+}

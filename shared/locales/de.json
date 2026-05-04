@@ -1,0 +1,217 @@
+{
+  "common": {
+    "ok": "OK",
+    "cancel": "Abbrechen",
+    "save": "Speichern",
+    "loading": "Laden...",
+    "error": "Fehler"
+  },
+  "viewer": {
+    "title": "Screen Recorder Viewer",
+    "loading_calendar": "Lade Kalender...",
+    "tray_warning": "Der Hintergrunddienst (Tray) scheint nicht zu laufen. Screenshots werden derzeit nicht aufgezeichnet.",
+    "no_captures": "Keine Aufnahmen für diesen Tag gefunden.",
+    "search_placeholder": "Suche in Titeln oder OCR-Text...",
+    "tabs": {
+      "screenshot": "Screenshot",
+      "titles": "Fenstertitel",
+      "files": "Dateien",
+      "urls": "URLs",
+      "calls": "Anrufe",
+      "ocr": "OCR/Text",
+      "summary": "KI-Zusammenfassung"
+    },
+    "meta": {
+      "loading_meta": "Lade Metadaten...",
+      "loading_data": "Lade Daten...",
+      "loading_urls": "Lade URLs...",
+      "loading_ocr": "Lade OCR Text...",
+      "no_ocr": "Kein OCR Text vorhanden oder Funktion deaktiviert.",
+      "no_titles": "Keine Fenstertitel in Metadaten gefunden",
+      "no_titles_list": "Keine Titelliste in Metadaten vorhanden",
+      "no_files": "Keine offenen Dateien erfasst",
+      "no_urls": "Keine Browser-URLs erfasst",
+      "no_calls": "Keine Anrufinformationen erfasst",
+      "not_found": "Metadaten nicht in Datenbank gefunden",
+      "no_more_data": "Keine weiteren Daten",
+      "no_screenshot_at_time": "Kein Screenshot für diese Zeit vorhanden.",
+      "col_time": "Zeit",
+      "col_window": "Fenster",
+      "col_url": "URL",
+      "col_title": "Fenstertitel",
+      "col_file": "Dateipfad",
+      "col_call": "Anruf",
+      "screensaver_test": "Bildschirmschoner testen"
+    },
+    "ai": {
+      "title": "KI-Tageszusammenfassung",
+      "desc": "Analysiere deine Aktivitäten des Tages mit künstlicher Intelligenz. Du kannst entweder den generierten Prompt kopieren oder die Analyse direkt hier anfordern.",
+      "status_loading": "Generiere Zusammenfassung...",
+      "generate_btn": "KI-Zusammenfassung anfordern",
+      "tab_prompt": "Prompt",
+      "tab_result": "KI-Ergebnis",
+      "prompt_title": "Prompt-Vorbereitung",
+      "prompt_desc": "Dieser Text basiert auf deinen Aktivitäten und kann als Prompt für ChatGPT verwendet werden.",
+      "result_title": "KI-Analyse Ergebnis",
+      "result_placeholder": "Noch keine KI-Analyse durchgeführt oder angefordert.",
+      "copy": "Kopieren",
+      "system_prompt": "Du bist ein hilfreicher Assistent, der IT-Aktivitäten für Rechnungsstellungen zusammenfasst. Antworte in Deutsch. Nutze Markdown für die Strukturierung.",
+      "error_parse": "Fehler beim Parsen der API-Antwort.",
+      "error_api": "API Fehler: {message}",
+      "error_api_status": "API Fehler (Status {status})",
+      "error_network": "Netzwerkfehler: {message}",
+      "error_no_key": "Kein ChatGPT API Key in den Einstellungen hinterlegt."
+    },
+    "summary_parts": {
+      "title": "Aktivitäts-Zusammenfassung für den {date}",
+      "prompt_intro": "Kopiere diesen Text in ChatGPT mit dem Prompt:",
+      "prompt_text": "\"Analysiere meine Aktivitäten anhand der Fenstertitel, Dateipfade, URLs und OCR-Texte. Gruppiere sie nach Kundenprojekten oder Themen. Gib für jedes Thema die geschätzte Gesamtdauer an und erstelle eine Liste der erledigten Aufgaben.\"",
+      "fokus": "Fokus",
+      "window": "Fenster",
+      "url": "URL",
+      "file": "Datei",
+      "call": "Anruf",
+      "ocr": "Inhalt (OCR)",
+      "until": "bis",
+      "unknown": "Unbekannt",
+      "no_data": "Keine Daten für diesen Tag gefunden."
+    },
+    "searching": {
+      "active": "Suche läuft...",
+      "results": "{count} Ergebnisse gefunden",
+      "error": "Fehler bei der Suche"
+    },
+    "migration": {
+      "scanning": "Scanne Verzeichnisse...",
+      "migrating": "Indiziere Daten...",
+      "migrating_progress": "Indiziere {current} von {total}",
+      "done": "Indizierung abgeschlossen. {count} Einträge verarbeitet."
+    },
+    "calendar": {
+      "error": "Fehler beim Laden des Kalenders: {error}",
+      "no_data": "Keine Daten gefunden.",
+      "days": {
+        "mo": "Mo",
+        "tu": "Di",
+        "we": "Mi",
+        "th": "Do",
+        "fr": "Fr",
+        "sa": "Sa",
+        "su": "So"
+      }
+    },
+    "modes": {
+      "fit": "Fit",
+      "grid": "Grid",
+      "list": "List",
+      "heat": "Heat"
+    },
+    "heatmap": {
+      "activity": "Aktivität"
+    },
+    "controls": {
+      "prev": "Zurück",
+      "next": "Weiter",
+      "play": "Abspielen",
+      "pause": "Pause"
+    },
+    "keyboard_info": "Pfeiltasten: Navigation | Strg/Shift: +/- 10 Screenshots"
+  },
+  "tray": {
+    "tooltip": "Screen Recorder",
+    "menu": {
+      "show_viewer": "Viewer öffnen",
+      "settings": "Einstellungen",
+      "quit": "Beenden",
+      "pause": "Aufnahme pausieren",
+      "resume": "Aufnahme fortsetzen"
+    },
+    "notifications": {
+      "started": "Aufnahme gestartet",
+      "paused": "Aufnahme pausiert",
+      "resumed": "Aufnahme fortgesetzt"
+    }
+  },
+  "config": {
+    "title": "Einstellungen",
+    "general": {
+      "title": "Allgemein",
+      "language": "Sprache",
+      "default_mode": "Standard Modus",
+      "start_view": "Start Ansicht",
+      "latest": "Neuester Screenshot",
+      "earliest": "Ältester Screenshot",
+      "test_notifications": "Benachrichtigungen testen",
+      "test_notifications_help": "Überprüfen, ob Benachrichtigungen auf diesem System korrekt angezeigt werden.",
+      "test_notifications_btn": "Test-Benachrichtigung senden"
+    },
+    "storage": {
+      "title": "Speicherort",
+      "path": "Screenshot Pfad",
+      "browse": "Durchsuchen..."
+    },
+    "recording": {
+      "title": "Aufnahme",
+      "interval": "Intervall (Sekunden)",
+      "only_on_changes": "Nur speichern, wenn sich das Bild geändert hat",
+      "window_change": "Zusätzlicher Screenshot bei Fensterwechsel",
+      "window_change_delay": "Verzögerung nach Fensterwechsel (Sekunden)",
+      "display_change": "Zusätzlicher Screenshot bei Monitor-Fokuswechsel",
+      "display_change_delay": "Verzögerung nach Monitorwechsel (Sekunden)",
+      "skip_on_powersave": "Keine Screenshots bei Bildschirmschoner / Standby",
+      "format": "Bildformat (JPG oder PNG)",
+      "shortcut": "Manueller Screenshot Kürzel"
+    },
+    "ocr": {
+      "title": "OCR Einstellungen",
+      "enabled": "Texterkennung (OCR) aktivieren",
+      "language": "OCR Sprache (z.B. deu, eng, deu+eng):",
+      "language_help": "Mehrere Sprachen können mit '+' getrennt werden (z.B. deu+eng).",
+      "fast_mode": "Schneller Modus (ungenauer, aber ressourcensparend)",
+      "fast_mode_help": "Skaliert Bilder vor der Erkennung und deaktiviert Wörterbücher.",
+      "maintenance": "Wartung:",
+      "maintenance_help": "Analysiere alle vorhandenen Screenshots, für die noch kein OCR-Text extrahiert wurde.",
+      "maintenance_btn": "Batch OCR starten",
+      "screensaver_title": "Windows Bildschirmschoner",
+      "screensaver_help": "Den integrierten Bildschirmschoner nutzen, um die Texterkennung (OCR) automatisch im Hintergrund durchzuführen.",
+      "screensaver_system_enable": "Als Windows-Bildschirmschoner registrieren",
+      "screensaver_enable_btn": "OCR Screen Saver aktivieren",
+      "screensaver_disable_btn": "OCR Screen Saver deaktivieren",
+      "screensaver_timeout": "Aktivierung nach:",
+      "screensaver_require_password": "Anmeldung beim Reaktivieren erforderlich",
+      "screensaver_test": "Bildschirmschoner testen",
+      "win_energy_settings_btn": "Windows Energieeinstellungen",
+      "win_screensaver_settings_btn": "Windows Bildschirmschoner"
+    },
+    "ai": {
+      "title": "KI Einstellungen",
+      "api_key": "ChatGPT API Key (OpenAI):",
+      "help": "Wird benötigt, um automatische Zusammenfassungen im Viewer zu generieren."
+    },
+    "system": {
+      "title": "System Einstellungen",
+      "autostart": "Tray-App automatisch mit Windows starten",
+      "autostart_help": "Erstellt oder entfernt eine Verknüpfung im Autostart-Ordner."
+    },
+    "batch_ocr": {
+      "title": "Batch OCR Verarbeitung",
+      "status_init": "Initialisiere...",
+      "status_searching": "Suche Dateien...",
+      "abort": "Abbrechen",
+      "done": "Batch OCR erfolgreich abgeschlossen.",
+      "error": "Fehler beim Batch OCR: {error}"
+    }
+  },
+  "screensaver": {
+    "todo": "Offen",
+    "done": "Erledigt",
+    "documents": "Bilder",
+    "active": "Bildschirmschoner aktiv",
+    "ocr_status": "{engine}: {processed} / {total} Bilder",
+    "ocr_status_with_file": "{engine}: {processed} / {total} Bilder - {file}",
+    "ocr_status_captures": "{engine}: {processedImages} / {totalImages} Bilder",
+    "ocr_success": "OK",
+    "ocr_failed": "Fehlgeschlagen",
+    "ocr_empty": "Kein Text"
+  }
+}

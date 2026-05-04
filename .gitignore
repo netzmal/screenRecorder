@@ -1,0 +1,38 @@
+# Dependencies
+node_modules/
+*/node_modules/
+
+# Build outputs and packaged apps
+dist/
+build/
+out/
+release/
+*.asar
+*.blockmap
+*.exe
+*.msi
+*.dmg
+*.zip
+*.7z
+
+# Local editor and tool state
+.idea/
+.vscode/
+.claude/
+
+# Logs and runtime state
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Environment files
+.env
+.env.*
+
+# Windows and local temp files
+Thumbs.db
+Desktop.ini
+winmd_tmp/
+winmd_full/

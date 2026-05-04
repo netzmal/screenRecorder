@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Screen Recorder Screensaver</title>
+    <style>
+        html, body {
+            margin: 0;
+            padding: 0;
+            background-color: #030506;
+            overflow: hidden;
+            width: 100%;
+            height: 100%;
+        }
+        body {
+            color: white;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            perspective: 1200px;
+            position: fixed;
+            inset: 0;
+        }
+        #container {
+            display: flex;
+            position: fixed;
+            inset: 0;
+            justify-content: space-around;
+            align-items: center;
+            background:
+                linear-gradient(115deg, rgba(14, 48, 45, 0.26), transparent 36%),
+                linear-gradient(245deg, rgba(68, 49, 18, 0.18), transparent 34%),
+                #030506;
+            isolation: isolate;
+        }
+        #container::before,
+        #container::after {
+            content: "";
+            position: fixed;
+            inset: 0;
+            pointer-events: none;
+        }
+        #container::before {
+            background-image:
+                linear-gradient(rgba(120, 246, 220, 0.05) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(120, 246, 220, 0.04) 1px, transparent 1px);
+            background-size: 72px 72px;
+            mask-image: linear-gradient(to bottom, rgba(0,0,0,0.15), rgba(0,0,0,0.85) 22%, rgba(0,0,0,0.85) 76%, rgba(0,0,0,0.2));
+            animation: gridDrift 22s linear infinite;
+            z-index: 0;
+        }
+        #container::after {
+            background:
+                linear-gradient(90deg, transparent 0%, rgba(126, 243, 221, 0.08) 48%, rgba(249, 187, 84, 0.09) 52%, transparent 100%);
+            transform: translateX(-62%);
+            animation: scannerSweep 9s ease-in-out infinite;
+            z-index: 1;
+        }
+        .side {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            width: 45%;
+            height: 100%;
+            position: relative;
+            z-index: 2;
+        }
+        .side::before {
+            content: "";
+            width: min(68%, 520px);
+            height: 1px;
+            margin-top: 118px;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.24), transparent);
+            opacity: 0.55;
+        }
+        .stack-container {
+            flex-grow: 1;
+            width: 100%;
+            position: relative;
+            perspective: 1000px;
+        }
+        .photo {
+            position: absolute;
+            width: 120px;
+            height: 160px;
+            background-color: transparent;
+            transition: all 0.8s cubic-bezier(0.4, 0, 0.2, 1);
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            pointer-events: none;
+            opacity: 0.2;
+        }
+        .photo::before {
+            content: "";
+            position: absolute;
+            inset: 14px;
+            border: 1px solid rgba(126, 243, 221, 0.24);
+            border-radius: 8px;
+            box-shadow: inset 0 0 18px rgba(126, 243, 221, 0.08), 0 0 18px rgba(126, 243, 221, 0.08);
+        }
+        .photo.processing {
+            z-index: 2000;
+            opacity: 0.92;
+            transition: all 1.2s cubic-bezier(0.4, 0, 0.2, 1);
+            filter: drop-shadow(0 22px 36px rgba(0,0,0,0.55)) drop-shadow(0 0 22px rgba(126, 243, 221, 0.3));
+        }
+        .photo.processing::after {
+            content: "";
+            position: absolute;
+            left: 23px;
+            right: 23px;
+            top: 28px;
+            height: 3px;
+            background: linear-gradient(90deg, transparent, rgba(126, 243, 221, 0.95), rgba(249, 187, 84, 0.8), transparent);
+            box-shadow: 0 0 16px rgba(126, 243, 221, 0.65);
+            animation: documentScan 1.25s ease-in-out infinite;
+        }
+        .photo.disappearing {
+            transform: translate(-50%, -50%) translateZ(-1000px) scale(0.1) !important;
+            opacity: 0;
+            transition: transform 1.5s cubic-bezier(0.55, 0.085, 0.68, 0.53), opacity 1.2s ease-in;
+        }
+        .photo-icon {
+            width: 60%;
+            height: 60%;
+            color: rgba(255, 255, 255, 0.8);
+        }
+        .folder-container {
+            position: absolute;
+            width: 230px;
+            height: 188px;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            opacity: 0.72;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            filter: drop-shadow(0 24px 36px rgba(0,0,0,0.58)) drop-shadow(0 0 26px rgba(126, 243, 221, 0.16));
+        }
+        .folder-container::before,
+        .folder-container::after {
+            content: "";
+            position: absolute;
+            inset: -22px;
+            border: 1px solid rgba(126, 243, 221, 0.14);
+            border-radius: 8px;
+            animation: pulseFrame 3.6s ease-in-out infinite;
+        }
+        .folder-container::after {
+            inset: -38px;
+            border-color: rgba(249, 187, 84, 0.1);
+            animation-delay: 1.2s;
+        }
+        .folder-icon {
+            width: 100%;
+            height: 100%;
+            overflow: visible;
+        }
+        .inbox-sheet {
+            fill: rgba(255,255,255,0.04);
+            stroke: rgba(126, 243, 221, 0.34);
+            stroke-width: 2;
+            transform-origin: center;
+            animation: sheetFloat 4.6s ease-in-out infinite;
+        }
+        .sheet-b {
+            stroke: rgba(255, 211, 136, 0.28);
+            animation-delay: 0.8s;
+        }
+        .inbox-body {
+            fill: url(#inboxBody);
+            stroke: url(#inboxEdge);
+            stroke-width: 3;
+            filter: drop-shadow(0 0 18px rgba(126, 243, 221, 0.18));
+        }
+        .inbox-lip,
+        .inbox-slot,
+        .inbox-corner {
+            stroke: rgba(255,255,255,0.54);
+            stroke-width: 3;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+        }
+        .inbox-slot {
+            opacity: 0.38;
+            animation: slotPulse 2.2s ease-in-out infinite;
+        }
+        .inbox-slot.short {
+            opacity: 0.22;
+            animation-delay: 0.45s;
+        }
+        .stats {
+            padding-top: 40px;
+            font-size: 64px;
+            font-weight: bold;
+            color: rgba(244, 250, 247, 0.95);
+            text-shadow: 0 0 24px rgba(126, 243, 221, 0.18), 0 8px 28px rgba(0,0,0,0.9);
+            z-index: 100;
+        }
+        #left .stats {
+            color: rgba(255, 211, 136, 0.95);
+            text-shadow: 0 0 24px rgba(249, 187, 84, 0.2), 0 8px 28px rgba(0,0,0,0.9);
+        }
+        #right .stats {
+            color: rgba(148, 247, 214, 0.95);
+        }
+        .count-info {
+            font-size: 18px;
+            opacity: 0.68;
+            margin-top: 5px;
+            z-index: 100;
+        }
+        .label {
+            font-size: 20px;
+            opacity: 0.7;
+            margin-top: 10px;
+            z-index: 100;
+            text-transform: uppercase;
+            letter-spacing: 0;
+        }
+        #overlay {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            padding: 18px 20px 22px;
+            background: linear-gradient(to top, rgba(0,0,0,0.82) 0%, rgba(0,0,0,0.42) 48%, rgba(0,0,0,0) 100%);
+            color: rgba(255, 255, 255, 0.4);
+            font-size: 12px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 8px;
+            z-index: 10000;
+            pointer-events: none;
+        }
+        #ocr-details {
+            font-size: 14px;
+            color: rgba(255, 255, 255, 0.85);
+            font-weight: 400;
+            display: none;
+            background: rgba(5, 12, 14, 0.78);
+            padding: 7px 16px;
+            border-radius: 8px;
+            border: 1px solid rgba(126, 243, 221, 0.24);
+            box-shadow: 0 10px 28px rgba(0,0,0,0.55), inset 0 0 18px rgba(126, 243, 221, 0.06);
+        }
+        #status-text {
+            text-shadow: 0 0 14px rgba(126, 243, 221, 0.18);
+        }
+        @keyframes gridDrift {
+            from { background-position: 0 0, 0 0; }
+            to { background-position: 72px 72px, 72px 72px; }
+        }
+        @keyframes scannerSweep {
+            0%, 18% { transform: translateX(-64%); opacity: 0; }
+            28%, 72% { opacity: 1; }
+            88%, 100% { transform: translateX(64%); opacity: 0; }
+        }
+        @keyframes documentScan {
+            0% { transform: translateY(0); opacity: 0; }
+            18%, 82% { opacity: 1; }
+            100% { transform: translateY(95px); opacity: 0; }
+        }
+        @keyframes pulseFrame {
+            0%, 100% { transform: scale(0.96); opacity: 0.25; }
+            50% { transform: scale(1.04); opacity: 0.7; }
+        }
+        @keyframes sheetFloat {
+            0%, 100% { transform: translateY(0); opacity: 0.58; }
+            50% { transform: translateY(-7px); opacity: 0.9; }
+        }
+        @keyframes slotPulse {
+            0%, 100% { opacity: 0.2; }
+            50% { opacity: 0.58; }
+        }
+    </style>
+</head>
+<body>
+    <div id="container">
+        <div id="left" class="side">
+            <div id="stats-pending" class="stats">0%</div>
+            <div id="count-pending" class="count-info">0 documents</div>
+            <div id="label-pending" class="label">Todo</div>
+            <div id="stack-pending" class="stack-container"></div>
+        </div>
+        <div id="right" class="side">
+            <div id="stats-processed" class="stats">0%</div>
+            <div id="count-processed" class="count-info">0 documents</div>
+            <div id="label-processed" class="label">Done</div>
+            <!-- Rechter Stapel entfernt -->
+        </div>
+    </div>
+    <div id="overlay">
+        <div id="ocr-details">Processing with Windows OCR: 0/0</div>
+        <div id="status-text">Screen Recorder Screensaver active</div>
+    </div>
+
+    <script src="renderer.js"></script>
+</body>
+</html>

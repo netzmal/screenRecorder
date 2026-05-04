@@ -1,0 +1,1995 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title id="title-text">Screen Recorder Viewer</title>
+    <style>
+        body { font-family: sans-serif; margin: 0; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+        #tray-warning { 
+            display: none; 
+            background: #fff3cd; 
+            color: #856404; 
+            padding: 10px; 
+            text-align: center; 
+            border-bottom: 1px solid #ffeeba; 
+            font-size: 14px; 
+            align-items: center; 
+            justify-content: center; 
+            gap: 10px;
+        }
+        #header { padding: 10px; background: #eee; border-bottom: 1px solid #ccc; display: flex; align-items: center; flex-shrink: 0; }
+        #main-container { display: flex; flex: 1; overflow: hidden; position: relative; }
+        #sidebar { width: 210px; height: 100%; border-right: 1px solid #ccc; border-bottom: none; background: #f9f9f9; display: flex; flex-direction: column; padding: 10px; flex-shrink: 0; box-sizing: border-box; overflow: hidden; }
+        #date-picker { display: flex; flex-direction: column; gap: 20px; flex: 1; overflow-y: auto; min-height: 0; }
+        #content-wrapper { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+        
+        /* Tab Styles */
+        #tab-bar { display: flex; background: #ddd; border-bottom: 1px solid #ccc; flex-shrink: 0; }
+        .tab { padding: 8px 20px; cursor: pointer; border-right: 1px solid #ccc; background: #eee; font-size: 14px; }
+        .tab:hover { background: #e5e5e5; }
+        .tab.active { background: #fff; border-bottom: 2px solid #0078d4; font-weight: bold; }
+        
+        #tab-content { flex: 1; overflow: hidden; position: relative; display: flex; flex-direction: column; }
+        .tab-pane { display: none; height: 100%; width: 100%; overflow-y: auto; padding: 10px; box-sizing: border-box; min-height: 0; }
+        .tab-pane.active { display: block; }
+        #tab-screenshots.active { display: flex; flex-direction: column; }
+
+        #content { display: flex; flex-wrap: wrap; gap: 10px; align-content: flex-start; justify-content: center; }
+        
+        /* Layout-Modi */
+        .mode-fit #content {
+            display: grid;
+            grid-template-areas: 
+                "disp0 disp2"
+                "disp1 disp1";
+            grid-template-columns: 1fr 1fr;
+            grid-template-rows: 1fr 1fr;
+            height: 100%;
+            width: 100%;
+            padding: 10px;
+            gap: 15px;
+            overflow-y: auto;
+            box-sizing: border-box;
+        }
+        
+        .mode-fit .screen-view[data-display="0"] { grid-area: disp0; }
+        .mode-fit .screen-view[data-display="1"] { grid-area: disp1; }
+        .mode-fit .screen-view[data-display="2"] { grid-area: disp2; }
+
+        .mode-fit .screen-view { 
+            height: 100%; 
+            width: 100%;
+            min-height: 0;
+            min-width: 0; 
+            display: flex;
+            flex-direction: column;
+            overflow: visible;
+            border: 1px solid #555;
+        }
+        .mode-fit .screen-view img { 
+            width: 100%; 
+            height: 100%;
+            min-height: 0;
+            object-fit: contain;
+            object-position: center;
+            background: #000;
+        }
+
+        .mode-grid #content {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(max(300px, 100% / var(--display-count, 1) - 20px), 1fr));
+            grid-auto-rows: 1fr;
+            gap: 15px;
+            padding: 15px;
+            justify-content: center;
+            width: 100%;
+            box-sizing: border-box;
+        }
+        
+        .mode-grid .screen-view {
+            aspect-ratio: 16 / 9;
+            width: 100%;
+            height: auto;
+            overflow: hidden;
+            border: 1px solid #555;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .mode-grid .screen-view img {
+            width: 100%;
+            height: 100%;
+            flex: 1;
+            min-height: 0;
+            object-fit: contain;
+            object-position: center;
+            background: #000;
+        }
+
+        /* List Modus (ehemals Auto) */
+        .mode-list #content {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            padding: 10px;
+            align-items: center;
+            width: 100%;
+            box-sizing: border-box;
+        }
+        .mode-list .screen-view {
+            flex: 0 0 auto;
+            width: 100%;
+            max-width: 100%;
+            height: auto;
+            min-height: 0;
+            aspect-ratio: auto;
+            border: 1px solid #555;
+            margin-bottom: 10px;
+            overflow: visible;
+            display: flex;
+            flex-direction: column;
+        }
+        .mode-list .screen-view img {
+            width: 100%;
+            height: auto;
+            min-height: 0;
+            display: block;
+            object-fit: contain;
+            object-position: center;
+            background: #000;
+        }
+        
+        /* Table Styles for Meta */
+        .meta-table { width: 100%; border-collapse: collapse; background: #fff; }
+        .meta-table th, .meta-table td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+        .meta-table th { background: #f2f2f2; position: sticky; top: 0; }
+        .meta-table tr:nth-child(even) { background: #fafafa; }
+        .meta-table tr:hover { background: #f0f7ff; }
+        .active-window-row { background: #e7f3ff !important; font-weight: bold; }
+        .active-window-row td::after { content: ' (Fokus)'; font-size: 10px; color: #0078d4; margin-left: 10px; vertical-align: middle; }
+
+        .screen-view { border: 1px solid #aaa; background: #000; display: flex; flex-direction: column; min-width: 0; flex: 1 1 auto; max-width: 100%; position: relative; overflow: visible; }
+        .screen-view img { width: 100%; height: 100%; object-fit: contain; object-position: center; cursor: zoom-in; display: block; }
+        .screen-label { background: #444; color: #fff; padding: 2px 5px; font-size: 12px; }
+
+        /* Fullscreen Overlay Styles */
+        #fullscreen-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.9);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+            cursor: zoom-out;
+        }
+        #fullscreen-overlay img {
+            max-width: 98%;
+            max-height: 98%;
+            object-fit: contain;
+            object-position: center;
+        }
+
+        /* Progressbar Styles */
+        #controls { padding: 10px; background: #eee; border-top: 1px solid #ccc; display: flex; align-items: center; gap: 10px; }
+        
+        @keyframes pulse {
+            0% { opacity: 0.4; }
+            50% { opacity: 1; }
+            100% { opacity: 0.4; }
+        }
+        .pulsating {
+            animation: pulse 1.5s infinite ease-in-out;
+        }
+
+        #time-slider { flex: 1; cursor: pointer; }
+        #current-time-display { min-width: 60px; font-family: monospace; font-size: 14px; }
+        
+        .control-group { display: flex; align-items: center; gap: 5px; background: #ddd; padding: 2px; border-radius: 4px; }
+        .btn-toggle {
+            background: #f0f0f0;
+            border: 1px solid #ccc;
+            padding: 4px 8px;
+            cursor: pointer;
+            border-radius: 3px;
+            font-size: 11px;
+            color: #444;
+        }
+        .btn-toggle:hover { background: #e0e0e0; }
+        .btn-toggle.active { background: #0078d4; color: white; border-color: #005a9e; }
+        
+        .btn {
+            padding: 8px 15px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 13px;
+            background-color: #f0f0f0;
+        }
+        .btn-primary {
+            background-color: #0078d4;
+            color: white;
+            border-color: #005a9e;
+        }
+        .btn-secondary {
+            background-color: #e1e1e1;
+            color: black;
+        }
+        .btn:hover {
+            opacity: 0.9;
+        }
+
+        /* Heat Mode & Timeline Styles */
+        #time-slider-container {
+            flex: 1;
+            position: relative;
+            display: flex;
+            align-items: center;
+        }
+        
+        #time-slider { 
+            width: 100%;
+            cursor: pointer; 
+            position: relative;
+            z-index: 2;
+            margin: 0;
+            background: transparent;
+            -webkit-appearance: none;
+        }
+        #time-slider:focus {
+            outline: none;
+        }
+        #time-slider:focus::-webkit-slider-runnable-track {
+            background: rgba(0, 120, 212, 0.2);
+        }
+
+        #time-slider::-webkit-slider-runnable-track {
+            width: 100%;
+            height: 8px;
+            cursor: pointer;
+            background: rgba(200, 200, 200, 0.3);
+            border-radius: 4px;
+        }
+        
+        #time-slider::-webkit-slider-thumb {
+            height: 18px;
+            width: 10px;
+            border-radius: 3px;
+            background: #0078d4;
+            cursor: pointer;
+            -webkit-appearance: none;
+            margin-top: -5px;
+            box-shadow: 0 0 2px rgba(0,0,0,0.5);
+        }
+
+        #heatmap-overlay {
+            position: absolute;
+            left: 2px;
+            right: 2px;
+            top: 50%;
+            height: 8px;
+            margin-top: -4px;
+            border-radius: 4px;
+            z-index: 1;
+            pointer-events: none;
+            overflow: hidden;
+        }
+
+        .mode-heat #content {
+            display: grid;
+            grid-template-areas: 
+                "disp0 disp2"
+                "disp1 disp1";
+            grid-template-columns: 1fr 1fr;
+            grid-template-rows: 1fr 1fr;
+            height: 100%;
+            width: 100%;
+            padding: 10px;
+            gap: 15px;
+            overflow-y: auto;
+            box-sizing: border-box;
+        }
+        
+        .mode-heat .screen-view[data-display="0"] { grid-area: disp0; }
+        .mode-heat .screen-view[data-display="1"] { grid-area: disp1; }
+        .mode-heat .screen-view[data-display="2"] { grid-area: disp2; }
+
+        .mode-heat .screen-view { 
+            height: 100%; 
+            width: 100%;
+            min-height: 0;
+            min-width: 0; 
+            display: flex;
+            flex-direction: column;
+            overflow: visible;
+            border: 1px solid #555;
+        }
+        .mode-heat .screen-view img { 
+            width: 100%; 
+            height: 100%;
+            min-height: 0;
+            object-fit: contain;
+            object-position: center;
+            background: #000;
+        }
+
+        /* Layout-Optimierung für einen Bildschirm in Fit/Heat Modi */
+        .mode-fit #content.single-display,
+        .mode-heat #content.single-display {
+            display: flex;
+            padding: 0;
+            gap: 0;
+        }
+        .mode-fit #content.single-display .screen-view,
+        .mode-heat #content.single-display .screen-view {
+            border: none;
+        }
+        .mode-fit #content.single-display .screen-label,
+        .mode-heat #content.single-display .screen-label {
+            display: none;
+        }
+
+        #config-btn {
+            background: #f0f0f0;
+            border: 1px solid #ccc;
+            padding: 4px 8px;
+            cursor: pointer;
+            border-radius: 3px;
+            font-size: 12px;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+        #config-btn:hover { background: #e0e0e0; }
+        #config-btn svg { width: 16px; height: 16px; fill: #444; }
+
+        /* Datumsauswahl Styles */
+        #search-container {
+            margin-bottom: 15px;
+            position: relative;
+            display: flex;
+            align-items: center;
+            background: #fff;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            padding: 4px 8px;
+            flex-shrink: 0;
+        }
+        #search-input {
+            border: none;
+            outline: none;
+            width: 100%;
+            font-size: 13px;
+            padding: 2px;
+        }
+        #search-icon {
+            width: 16px;
+            height: 16px;
+            fill: #888;
+            margin-right: 5px;
+            flex-shrink: 0;
+        }
+        #search-clear {
+            width: 16px;
+            height: 16px;
+            fill: #888;
+            cursor: pointer;
+            display: none;
+            margin-left: 5px;
+            flex-shrink: 0;
+        }
+        #search-clear:hover {
+            fill: #333;
+        }
+        #search-results-info {
+            font-size: 11px;
+            color: #666;
+            margin-bottom: 10px;
+            display: none;
+            flex-shrink: 0;
+        }
+        #search-results-list {
+            display: none;
+            flex-direction: column;
+            gap: 4px;
+            overflow-y: auto;
+            flex: 1;
+            min-height: 0;
+        }
+        #date-picker-loading {
+            font-size: 13px;
+            color: #666;
+            margin-bottom: 10px;
+            flex-shrink: 0;
+        }
+        .search-result-item {
+            padding: 6px 8px;
+            font-size: 13px;
+            line-height: 1.2;
+            cursor: pointer;
+            border-radius: 3px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            color: #333;
+            flex-shrink: 0;
+        }
+        .search-result-item:hover {
+            background-color: #e0e0e0;
+        }
+        .search-result-item.active {
+            background-color: #0078d4;
+            color: white;
+        }
+        .month-container { flex-shrink: 0; width: 100%; }
+        .month-name { font-weight: bold; margin-bottom: 5px; border-bottom: 1px solid #ddd; padding-bottom: 2px; text-transform: capitalize; font-size: 13px; white-space: nowrap; }
+        .days-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; }
+        .day { padding: 3px 0; text-align: center; cursor: pointer; border-radius: 3px; font-size: 11px; }
+        .day:hover { background-color: #e0e0e0; }
+        .day.has-data { font-weight: bold; color: #000; }
+        .day.selected { background-color: #0078d4; color: white !important; }
+        .day.today { color: #d93025; font-weight: bold; position: relative; border: 1px solid #d93025; }
+        .day.today.selected { background-color: #d93025; color: white !important; }
+        .day.empty { cursor: default; }
+        .day.other-month { color: #ccc; pointer-events: none; }
+        .day-header { font-size: 9px; text-align: center; color: #888; padding-bottom: 2px; }
+        #tab-summary.tab-pane { padding: 0; display: none; flex-direction: column; overflow: hidden; height: 100%; }
+        #tab-summary.tab-pane.active { display: flex; }
+        .inner-tabs { display: flex; background: #f0f0f0; border-bottom: 1px solid #ccc; flex-shrink: 0; }
+        .inner-tab { padding: 8px 20px; cursor: pointer; border-right: 1px solid #ccc; font-size: 13px; color: #666; }
+        .inner-tab:hover { background: #e5e5e5; }
+        .inner-tab.active { background: #fff; color: #000; font-weight: bold; border-bottom: 2px solid #0078d4; margin-bottom: -1px; }
+        .inner-tab-content { flex: 1; display: none; flex-direction: column; min-height: 0; }
+        .inner-tab-content.active { display: flex; }
+        
+        .ai-intro-container { 
+            padding: 20px; 
+            background: #fdfdfd; 
+            border-bottom: 1px solid #ddd; 
+            display: flex; 
+            align-items: center; 
+            justify-content: space-between;
+            gap: 20px;
+        }
+        .ai-intro-text { flex: 1; }
+        .ai-intro-text h3 { margin: 0 0 5px 0; color: #333; }
+        .ai-intro-text p { margin: 0; font-size: 13px; color: #666; line-height: 1.4; }
+        
+        .ai-tabs-box {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            margin: 15px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            overflow: hidden;
+            background: #fff;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+            min-height: 0;
+        }
+
+        .btn-ai { padding: 10px 20px; background: #10a37f; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; white-space: nowrap; }
+        .btn-ai:hover { background: #0e8c6d; }
+        .btn-ai:disabled { background: #ccc; cursor: not-allowed; }
+
+        /* Markdown Styles */
+        .markdown-body { font-family: sans-serif; font-size: 14px; line-height: 1.6; color: #333; }
+        .markdown-body h1, .markdown-body h2, .markdown-body h3 { border-bottom: 1px solid #eaecef; padding-bottom: 0.3em; margin-top: 24px; margin-bottom: 16px; }
+        .markdown-body h1 { font-size: 1.5em; }
+        .markdown-body h2 { font-size: 1.3em; }
+        .markdown-body h3 { font-size: 1.1em; }
+        .markdown-body ul, .markdown-body ol { padding-left: 2em; margin-bottom: 16px; }
+        .markdown-body li + li { margin-top: 0.25em; }
+        .markdown-body strong { font-weight: 600; }
+        .markdown-body code { padding: 0.2em 0.4em; margin: 0; font-size: 85%; background-color: rgba(27,31,35,0.05); border-radius: 3px; font-family: 'Courier New', Courier, monospace; }
+        .markdown-body table { border-spacing: 0; border-collapse: collapse; margin-bottom: 16px; width: 100%; }
+        .markdown-body table th, .markdown-body table td { padding: 6px 13px; border: 1px solid #dfe2e5; }
+        .markdown-body table tr { background-color: #fff; border-top: 1px solid #c6cbd1; }
+        .markdown-body table tr:nth-child(2n) { background-color: #f6f8fa; }
+    </style>
+</head>
+<body>
+    <div id="tray-warning">
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
+            <path d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z"/>
+        </svg>
+        <span id="tray-warning-text">The background service (Tray) does not seem to be running. Screenshots are currently not being recorded.</span>
+    </div>
+    <div id="main-container">
+        <div id="sidebar">
+            <div id="search-container">
+                <svg id="search-icon" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg>
+                <input type="text" id="search-input" placeholder="Search...">
+                <svg id="search-clear" viewBox="0 0 24 24" onclick="clearSearch()"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+            </div>
+            <div id="search-results-info"></div>
+            <div id="search-results-list"></div>
+            <div id="date-picker-loading">Loading calendar...</div>
+            <div id="date-picker"></div>
+        </div>
+        <div id="content-wrapper">
+            <div id="tab-bar">
+                <div id="tab-screenshots-btn" class="tab active" onclick="switchTab('tab-screenshots')">Screenshot</div>
+                <div id="tab-titles-btn" class="tab" onclick="switchTab('tab-titles')">Titles</div>
+                <div id="tab-files-btn" class="tab" onclick="switchTab('tab-files')">Files</div>
+                <div id="tab-urls-btn" class="tab" onclick="switchTab('tab-urls')">URLs</div>
+                <div id="tab-calls-btn" class="tab" onclick="switchTab('tab-calls')">Calls</div>
+                <div id="tab-ocr-btn" class="tab" onclick="switchTab('tab-ocr')">OCR</div>
+                <div id="tab-summary-btn" class="tab" onclick="switchTab('tab-summary')">AI Summary</div>
+            </div>
+            <div id="tab-content">
+                <div id="tab-screenshots" class="tab-pane active">
+                    <div id="content">
+                        <!-- Screenshots werden hier geladen -->
+                    </div>
+                </div>
+                <div id="tab-titles" class="tab-pane">
+                    <table class="meta-table">
+                        <thead>
+                            <tr><th>Titles</th></tr>
+                        </thead>
+                        <tbody id="titles-list"></tbody>
+                    </table>
+                </div>
+                <div id="tab-files" class="tab-pane">
+                    <table class="meta-table">
+                        <thead>
+                            <tr><th>File Path</th></tr>
+                        </thead>
+                        <tbody id="files-list"></tbody>
+                    </table>
+                </div>
+                <div id="tab-urls" class="tab-pane">
+                    <table class="meta-table">
+                        <thead>
+                            <tr><th style="width: 80px;">Time</th><th style="width: 200px;">Window</th><th>URL</th></tr>
+                        </thead>
+                        <tbody id="urls-list"></tbody>
+                    </table>
+                </div>
+                <div id="tab-calls" class="tab-pane">
+                    <table class="meta-table">
+                        <thead>
+                            <tr><th style="width: 80px;">Time</th><th>Call</th></tr>
+                        </thead>
+                        <tbody id="calls-list"></tbody>
+                    </table>
+                </div>
+                <div id="tab-ocr" class="tab-pane">
+                    <div style="padding: 10px; height: 100%; box-sizing: border-box; display: flex; flex-direction: column;">
+                        <div style="margin-bottom: 10px; display: flex; gap: 10px; flex-wrap: wrap;">
+                            <button id="test-screensaver-btn" class="btn btn-primary" onclick="testScreensaver()">Test Screensaver</button>
+                            <button id="win-energy-settings-btn" class="btn btn-secondary" onclick="openEnergySettings()">Windows Energieeinstellungen</button>
+                            <button id="win-screensaver-settings-btn" class="btn btn-secondary" onclick="openScreensaverSettings()">Windows Bildschirmschoner</button>
+                        </div>
+                        <pre id="ocr-text-display" style="flex: 1; overflow-y: auto; background: #f8f8f8; border: 1px solid #ccc; padding: 15px; white-space: pre-wrap; font-family: 'Courier New', Courier, monospace; font-size: 13px;"></pre>
+                    </div>
+                </div>
+                <div id="tab-summary" class="tab-pane">
+                    <div style="height: 100%; display: flex; flex-direction: column; background: #f5f5f5;">
+                        <div class="ai-intro-container">
+                            <div class="ai-intro-text">
+                                <h3>AI Daily Summary</h3>
+                                <p>Analyze your daily activities using artificial intelligence. You can either copy the generated prompt or request the analysis directly here.</p>
+                            </div>
+                            <button id="generate-ai-btn" class="btn-ai" onclick="generateAiSummary()">Generate AI Summary</button>
+                        </div>
+
+                        <div class="ai-tabs-box">
+                            <div class="inner-tabs">
+                                <div id="inner-tab-prompt" class="inner-tab active" onclick="switchInnerTab('prompt')">Prompt</div>
+                                <div id="inner-tab-result" class="inner-tab" onclick="switchInnerTab('result')">AI Result</div>
+                            </div>
+                            
+                            <div id="inner-content-prompt" class="inner-tab-content active">
+                                <div style="padding: 15px; flex: 1; display: flex; flex-direction: column; gap: 10px; min-height: 0;">
+                                    <div style="display: flex; justify-content: space-between; align-items: center; flex-shrink: 0;">
+                                        <h4 style="margin: 0;">Prompt Preparation</h4>
+                                        <button onclick="copySummary()" style="padding: 5px 12px; background: #0078d4; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">Copy</button>
+                                    </div>
+                                    <p style="font-size: 12px; color: #666; margin: 0; flex-shrink: 0;">This text is based on your activities and can be used as a prompt for ChatGPT.</p>
+                                    <textarea id="summary-display" readonly style="flex: 1; background: #f8f8f8; border: 1px solid #ccc; padding: 12px; font-family: 'Courier New', Courier, monospace; font-size: 12px; resize: none; overflow-y: auto; min-height: 0;"></textarea>
+                                </div>
+                            </div>
+
+                            <div id="inner-content-result" class="inner-tab-content">
+                                <div style="padding: 15px; flex: 1; display: flex; flex-direction: column; gap: 10px; min-height: 0;">
+                                    <div style="display: flex; justify-content: space-between; align-items: center; flex-shrink: 0;">
+                                        <h4 style="margin: 0;">AI Analysis Result</h4>
+                                        <button onclick="copyAiResult()" style="padding: 5px 12px; background: #0078d4; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">Copy</button>
+                                    </div>
+                                    <div id="ai-result-markdown" class="markdown-body" style="flex: 1; background: #fff; border: 1px solid #ccc; padding: 20px; overflow-y: auto; display: none; min-height: 0;"></div>
+                                    <textarea id="ai-result-display" readonly placeholder="No AI analysis performed or requested yet." style="flex: 1; background: #f8f8f8; border: 1px solid #ccc; padding: 12px; font-family: sans-serif; font-size: 13px; line-height: 1.5; resize: none; overflow-y: auto; min-height: 0;"></textarea>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div id="controls">
+                <span id="current-time-display">00:00:00</span>
+                <div id="time-slider-container">
+                    <div id="heatmap-overlay"></div>
+                    <input type="range" id="time-slider" min="0" max="0" value="0" title="Cursor: +/-1 Screenshot | Strg/Shift+Cursor: +/-10 Screenshots">
+                </div>
+                
+                <div class="control-group">
+                    <button id="btn-mode-heat" class="btn-toggle" onclick="setScaleMode('heat')">Heat</button>
+                    <button id="btn-mode-fit" class="btn-toggle" onclick="setScaleMode('fit')">Fit</button>
+                    <button id="btn-mode-grid" class="btn-toggle" onclick="setScaleMode('grid')">Grid</button>
+                    <button id="btn-mode-list" class="btn-toggle" onclick="setScaleMode('list')">List</button>
+                </div>
+
+                <button id="config-btn" onclick="openConfig()" title="Konfiguration">
+                    <svg viewBox="0 0 24 24"><path d="M19.14,12.94c0.04-0.3,0.06-0.61,0.06-0.94c0-0.32-0.02-0.64-0.07-0.94l2.03-1.58c0.18-0.14,0.23-0.41,0.12-0.61 l-1.92-3.32c-0.12-0.22-0.37-0.29-0.59-0.22l-2.39,0.96c-0.5-0.38-1.03-0.7-1.62-0.94L14.4,2.81c-0.04-0.24-0.24-0.41-0.48-0.41 h-3.84c-0.24,0-0.43,0.17-0.47,0.41L9.25,5.35C8.66,5.59,8.12,5.92,7.63,6.29L5.24,5.33c-0.22-0.08-0.47,0-0.59,0.22L2.74,8.87 C2.62,9.08,2.66,9.34,2.86,9.48l2.03,1.58C4.84,11.36,4.81,11.69,4.81,12s0.02,0.64,0.07,0.94l-2.03,1.58 c-0.18,0.14-0.23,0.41-0.12,0.61l1.92,3.32c0.12,0.22,0.37,0.29,0.59,0.22l2.39-0.96c0.5,0.38,1.03,0.7,1.62,0.94l0.36,2.54 c0.05,0.24,0.24,0.41,0.48,0.41h3.84c0.24,0,0.44-0.17,0.47-0.41l0.36-2.54c0.59-0.24,1.13-0.56,1.62-0.94l2.39,0.96 c0.22,0.08,0.47,0,0.59-0.22l1.92-3.32c0.12-0.22,0.07-0.47-0.12-0.61L19.14,12.94z M12,15.5c-1.93,0-3.5-1.57-3.5-3.5 s1.57-3.5,3.5-3.5s3.5,1.57,3.5,3.5S13.93,15.5,12,15.5z"/></svg>
+                    Config
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <div id="fullscreen-overlay" onclick="closeFullscreen()">
+        <img id="fullscreen-img" src="" />
+    </div>
+
+    <script>
+        const { ipcRenderer, shell } = require('electron');
+        const fs = require('fs');
+        const path = require('path');
+
+        const content = document.getElementById('content');
+        const datePicker = document.getElementById('date-picker');
+        const timeSlider = document.getElementById('time-slider');
+        const currentTimeDisplay = document.getElementById('current-time-display');
+        const trayWarning = document.getElementById('tray-warning');
+        const fullscreenOverlay = document.getElementById('fullscreen-overlay');
+        const fullscreenImg = document.getElementById('fullscreen-img');
+        const titlesList = document.getElementById('titles-list');
+        const filesList = document.getElementById('files-list');
+        const urlsList = document.getElementById('urls-list');
+        const callsList = document.getElementById('calls-list');
+        const ocrTextDisplay = document.getElementById('ocr-text-display');
+        const summaryDisplay = document.getElementById('summary-display');
+        const aiResultDisplay = document.getElementById('ai-result-display');
+        const aiResultMarkdown = document.getElementById('ai-result-markdown');
+        const generateAiBtn = document.getElementById('generate-ai-btn');
+        const searchInput = document.getElementById('search-input');
+        const searchResultsInfo = document.getElementById('search-results-info');
+        const searchResultsList = document.getElementById('search-results-list');
+
+        let currentConfigDir = '';
+        let selectedDate = new Date().toISOString().split('T')[0];
+        let availableDates = new Set();
+        let timeGroups = []; // Array von { time: 'HH-mm-ss', files: { displayIndex: fullPath }, date: 'YYYY-MM-DD' }
+        let currentTimeIndex = 0;
+        let dayCapturesCache = {}; // Cache für Metadaten eines Tages: { timeKey: row }
+        let translations = {};
+        let lastRefreshKey = "";
+        let displaysInfo = [];
+        let currentScaleMode = 'fit';
+        let currentDefaultMode = 'fit';
+        let currentStartView = 'latest';
+        let isSearching = false;
+        let previousScaleMode = 'fit';
+        let searchResults = [];
+        let currentSearchQuery = '';
+        let appVersion = '';
+        let pendingTargetTime = null;
+
+        ipcRenderer.send('get-config');
+
+        ipcRenderer.on('migration-progress', (event, data) => {
+            const overlay = document.getElementById('migration-overlay');
+            const status = document.getElementById('migration-status');
+            const count = document.getElementById('migration-count');
+            const progressBar = document.getElementById('migration-progress-bar');
+            
+            overlay.style.display = 'block';
+            status.innerText = data.status;
+            
+            if (data.total > 0) {
+                let progressText = "Indiziere {current} von {total}";
+                if (translations.viewer && translations.viewer.migration && translations.viewer.migration.migrating_progress) {
+                    progressText = translations.viewer.migration.migrating_progress;
+                }
+                progressText = progressText.replace('{current}', data.count).replace('{total}', data.total);
+                count.innerText = progressText;
+                
+                const percent = Math.min(100, Math.round((data.count / data.total) * 100));
+                progressBar.style.width = percent + '%';
+                progressBar.classList.remove('pulsating');
+            } else {
+                count.innerText = data.count > 0 ? (data.count + " items") : "";
+                
+                // Da wir die Gesamtanzahl nicht kennen, machen wir einen pulsierenden Balken
+                // oder erhöhen ihn einfach immer weiter (fake progress)
+                if (data.status.toLowerCase().includes('scanning') || data.status.toLowerCase().includes('scanne')) {
+                    progressBar.style.width = '20%';
+                    progressBar.classList.remove('pulsating');
+                } else {
+                    progressBar.style.width = '100%';
+                    progressBar.classList.add('pulsating');
+                }
+            }
+        });
+
+        ipcRenderer.on('config-data', async (event, data) => {
+            console.log('Received config-data:', data);
+            currentConfigDir = data.dir;
+            displaysInfo = data.displays || [];
+            currentDefaultMode = data.defaultMode || 'fit';
+            currentStartView = data.startView || 'latest';
+            currentScaleMode = data.scaleMode || currentDefaultMode;
+            previousScaleMode = currentScaleMode;
+            translations = data.translations || {};
+            appVersion = data.version || '';
+
+            lastRefreshKey = ""; // Force refresh on translation change
+            applyTranslations();
+            // Abwärtskompatibilität
+            if (currentScaleMode === 'auto') currentScaleMode = 'list';
+            updateScaleUI();
+            
+            // Initialen Scan auslösen
+            scanAvailableDates();
+            
+            // Setze initiale currentTimeIndex basierend auf startView beim ersten Laden
+            // (wird in refreshUI angewendet wenn currentTimeIndex ein spezieller Wert ist)
+            currentTimeIndex = (currentStartView === 'earliest') ? 0 : 999999;
+            
+            await refreshUI();
+            checkTrayStatus();
+
+            // Migration verzögert im Hintergrund ausführen, um Start nicht zu bremsen
+            setTimeout(() => {
+                ipcRenderer.invoke('migrate-data').then(res => {
+                    document.getElementById('migration-overlay').style.display = 'none';
+                    if (res.count > 0) {
+                        console.log(`Migrated ${res.count} items to SQLite`);
+                        // Wenn wir gerade suchen, Suche aktualisieren
+                        if (isSearching) {
+                            const query = searchInput.value.toLowerCase().trim();
+                            if (query) performSearch(query);
+                        }
+                        scanAvailableDates();
+                        refreshUI();
+                    }
+                }).catch(err => {
+                    console.error('Migration error:', err);
+                    document.getElementById('migration-overlay').style.display = 'none';
+                });
+            }, 5000);
+        });
+
+        ipcRenderer.on('config-updated', async (event, data) => {
+            console.log('Received config-updated:', data);
+            let shouldRefresh = false;
+            let shouldScan = false;
+
+            if (data.dir && data.dir !== currentConfigDir) {
+                currentConfigDir = data.dir;
+                shouldRefresh = true;
+                shouldScan = true;
+            }
+            if (data.displays) {
+                displaysInfo = data.displays;
+                shouldRefresh = true;
+            }
+            if (data.defaultMode) currentDefaultMode = data.defaultMode;
+            if (data.startView) currentStartView = data.startView;
+            if (data.language) {
+                // Bei Sprachwechsel müssen wir neue Konfiguration anfordern für neue Übersetzungen
+                ipcRenderer.send('get-config');
+                return; // get-config wird config-data auslösen, die alles aktualisiert
+            }
+            if (data.scaleMode) {
+                currentScaleMode = data.scaleMode;
+                if (currentScaleMode === 'auto') currentScaleMode = 'list';
+                if (!isSearching) previousScaleMode = currentScaleMode;
+                updateScaleUI();
+            }
+
+            if (shouldScan) scanAvailableDates();
+            if (shouldRefresh) await refreshUI();
+        });
+
+        function applyTranslations() {
+            if (!translations.viewer) return;
+            
+            // UI Texte setzen
+            let title = translations.viewer.title || 'Screen Recorder Viewer';
+            if (appVersion) title += ' - v' + appVersion;
+            
+            document.title = title;
+            if (document.getElementById('title-text')) {
+                document.getElementById('title-text').innerText = title;
+            }
+            
+            if (document.getElementById('search-input')) {
+                document.getElementById('search-input').placeholder = translations.viewer.search_placeholder;
+            }
+            
+            if (document.getElementById('date-picker-loading')) {
+                document.getElementById('date-picker-loading').innerText = translations.viewer.loading_calendar;
+            }
+
+            // Tray Warning
+            if (document.getElementById('tray-warning-text')) {
+                document.getElementById('tray-warning-text').innerText = translations.viewer.tray_warning;
+            }
+            
+            // Tabs
+            if (document.getElementById('tab-screenshots-btn')) document.getElementById('tab-screenshots-btn').innerText = translations.viewer.tabs.screenshot || "Screenshot";
+            if (document.getElementById('tab-titles-btn')) document.getElementById('tab-titles-btn').innerText = translations.viewer.tabs.titles;
+            if (document.getElementById('tab-files-btn')) document.getElementById('tab-files-btn').innerText = translations.viewer.tabs.files;
+            if (document.getElementById('tab-urls-btn')) document.getElementById('tab-urls-btn').innerText = translations.viewer.tabs.urls;
+            if (document.getElementById('tab-calls-btn')) document.getElementById('tab-calls-btn').innerText = translations.viewer.tabs.calls;
+            if (document.getElementById('tab-ocr-btn')) document.getElementById('tab-ocr-btn').innerText = translations.viewer.tabs.ocr;
+            
+            // Slider Info
+            if (document.getElementById('time-slider')) {
+                document.getElementById('time-slider').title = translations.viewer.keyboard_info;
+            }
+
+            // Config Button
+            if (document.getElementById('config-btn')) {
+                // Nur den Textknoten nach dem SVG ändern
+                const btn = document.getElementById('config-btn');
+                btn.title = translations.config.title;
+                if (btn.childNodes.length > 2) {
+                    btn.childNodes[2].nodeValue = " " + (translations.config.title || "Config");
+                }
+            }
+
+            // Modus Buttons
+            if (document.getElementById('btn-mode-fit')) document.getElementById('btn-mode-fit').innerText = translations.viewer.modes.fit;
+            if (document.getElementById('btn-mode-grid')) document.getElementById('btn-mode-grid').innerText = translations.viewer.modes.grid;
+            if (document.getElementById('btn-mode-list')) document.getElementById('btn-mode-list').innerText = translations.viewer.modes.list;
+            if (document.getElementById('btn-mode-heat')) document.getElementById('btn-mode-heat').innerText = translations.viewer.modes.heat;
+
+            // KI Tab
+            if (document.getElementById('tab-summary-btn')) document.getElementById('tab-summary-btn').innerText = translations.viewer.tabs.summary;
+            if (document.querySelector('#tab-summary h3')) document.querySelector('#tab-summary h3').innerText = translations.viewer.ai.title;
+            if (document.querySelector('#tab-summary p')) document.querySelector('#tab-summary p').innerText = translations.viewer.ai.desc;
+            if (document.getElementById('generate-ai-btn')) document.getElementById('generate-ai-btn').innerText = translations.viewer.ai.generate_btn;
+            if (document.getElementById('inner-tab-prompt')) document.getElementById('inner-tab-prompt').innerText = translations.viewer.ai.tab_prompt;
+            if (document.getElementById('inner-tab-result')) document.getElementById('inner-tab-result').innerText = translations.viewer.ai.tab_result;
+            if (document.querySelector('#inner-content-prompt h4')) document.querySelector('#inner-content-prompt h4').innerText = translations.viewer.ai.prompt_title;
+            if (document.querySelector('#inner-content-prompt p')) document.querySelector('#inner-content-prompt p').innerText = translations.viewer.ai.prompt_desc;
+            if (document.querySelector('#inner-content-result h4')) document.querySelector('#inner-content-result h4').innerText = translations.viewer.ai.result_title;
+            if (document.getElementById('ai-result-display')) document.getElementById('ai-result-display').placeholder = translations.viewer.ai.result_placeholder;
+            document.querySelectorAll('#tab-summary button').forEach(btn => {
+                if (btn.innerText === 'Kopieren' || btn.innerText === 'Copy') btn.innerText = translations.viewer.ai.copy;
+            });
+
+            // Tabellen Header
+            const titlesHeader = document.querySelector('#tab-titles th');
+            if (titlesHeader) titlesHeader.innerText = translations.viewer.meta.col_title;
+            const filesHeader = document.querySelector('#tab-files th');
+            if (filesHeader) filesHeader.innerText = translations.viewer.meta.col_file;
+            const urlsHeaders = document.querySelectorAll('#tab-urls th');
+            if (urlsHeaders.length >= 3) {
+                urlsHeaders[0].innerText = translations.viewer.meta.col_time;
+                urlsHeaders[1].innerText = translations.viewer.meta.col_window;
+                urlsHeaders[2].innerText = translations.viewer.meta.col_url;
+            }
+            const callsHeaders = document.querySelectorAll('#tab-calls th');
+            if (callsHeaders.length >= 2) {
+                callsHeaders[0].innerText = translations.viewer.meta.col_time;
+                callsHeaders[1].innerText = translations.viewer.meta.col_call;
+            }
+
+            if (document.getElementById('test-screensaver-btn')) document.getElementById('test-screensaver-btn').innerText = translations.config.ocr.screensaver_test;
+            if (document.getElementById('win-energy-settings-btn')) document.getElementById('win-energy-settings-btn').innerText = translations.config.ocr.win_energy_settings;
+            if (document.getElementById('win-screensaver-settings-btn')) document.getElementById('win-screensaver-settings-btn').innerText = translations.config.ocr.win_screensaver_settings;
+        }
+
+        function setScaleMode(mode) {
+            // Aktuelle Zeit speichern, um sie nach dem Wechsel wiederzufinden
+            let currentTimeStr = null;
+            if (timeGroups.length > 0 && currentTimeIndex >= 0 && currentTimeIndex < timeGroups.length) {
+                currentTimeStr = timeGroups[currentTimeIndex].time.replace(/:/g, '-');
+            }
+
+            currentScaleMode = mode;
+            updateScaleUI();
+
+            // Wenn wir eine Zeit hatten, versuchen wir den Index im neuen Modus zu synchronisieren
+            if (currentTimeStr) {
+                if (currentScaleMode === 'heat') {
+                    // Im Heat-Modus ist der Slider-Wert die Sekunden
+                    timeSlider.value = timeToSeconds(currentTimeStr);
+                } else {
+                    // In anderen Modi ist der Slider-Wert der Index
+                    const index = timeGroups.findIndex(g => g.time.replace(/:/g, '-') === currentTimeStr);
+                    if (index !== -1) {
+                        currentTimeIndex = index;
+                        timeSlider.value = index;
+                    }
+                }
+            }
+
+            ipcRenderer.send('save-config', { scaleMode: mode });
+            displayCurrentTimeGroup();
+        }
+
+        function updateScaleUI() {
+            const pane = document.getElementById('tab-screenshots');
+            pane.classList.remove('mode-fit', 'mode-list', 'mode-grid', 'mode-heat');
+            pane.classList.add('mode-' + currentScaleMode);
+            
+            document.querySelectorAll('.btn-toggle').forEach(btn => {
+                btn.classList.remove('active');
+                if (isSearching) {
+                    btn.setAttribute('disabled', 'disabled');
+                    btn.style.opacity = '0.5';
+                    btn.style.cursor = 'not-allowed';
+                } else {
+                    btn.removeAttribute('disabled');
+                    btn.style.opacity = '1';
+                    btn.style.cursor = 'pointer';
+                }
+            });
+            const activeBtn = document.getElementById('btn-mode-' + currentScaleMode);
+            if (activeBtn) activeBtn.classList.add('active');
+
+            updateSlider();
+            updateHeatmap();
+        }
+
+        timeSlider.oninput = () => {
+            console.log('Slider input:', timeSlider.value, 'Mode:', currentScaleMode);
+            if (currentScaleMode === 'heat' && !isSearching) {
+                // Im Heat-Modus ist der Slider-Wert die Sekunden des Tages (0-86399)
+                const totalSeconds = parseInt(timeSlider.value);
+                const h = Math.floor(totalSeconds / 3600);
+                const m = Math.floor((totalSeconds % 3600) / 60);
+                const s = totalSeconds % 60;
+                const timeStr = `${String(h).padStart(2, '0')}-${String(m).padStart(2, '0')}-${String(s).padStart(2, '0')}`;
+                
+                currentTimeDisplay.innerText = timeStr.replace(/-/g, ':');
+                
+                // Finde den nächstgelegenen Screenshot
+                const nearest = findNearestTimeIndex(timeStr);
+                if (nearest !== null) {
+                    currentTimeIndex = nearest;
+                }
+            } else {
+                currentTimeIndex = parseInt(timeSlider.value);
+            }
+            displayCurrentTimeGroup();
+
+            if (isSearching) {
+                updateSearchResultsActiveItem();
+            }
+        };
+
+        timeSlider.onkeydown = (e) => {
+            if (timeGroups.length === 0) return;
+
+            if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+                e.preventDefault();
+                let step = (e.ctrlKey || e.shiftKey) ? 10 : 1;
+                let newIndex = currentTimeIndex;
+
+                if (e.key === 'ArrowLeft') {
+                    newIndex = Math.max(0, currentTimeIndex - step);
+                } else {
+                    newIndex = Math.min(timeGroups.length - 1, currentTimeIndex + step);
+                }
+
+                if (newIndex !== currentTimeIndex) {
+                    currentTimeIndex = newIndex;
+                    updateSlider();
+                    displayCurrentTimeGroup();
+                }
+            }
+        };
+
+        function findNearestTimeIndex(targetTimeStr) {
+            if (timeGroups.length === 0) return null;
+            
+            const targetSec = timeToSeconds(targetTimeStr);
+            let nearestIndex = 0;
+            let minDiff = Infinity;
+            
+            for (let i = 0; i < timeGroups.length; i++) {
+                const currentSec = timeToSeconds(timeGroups[i].time.replace(/:/g, '-'));
+                const diff = Math.abs(targetSec - currentSec);
+                if (diff < minDiff) {
+                    minDiff = diff;
+                    nearestIndex = i;
+                }
+            }
+            return nearestIndex;
+        }
+
+        function timeToSeconds(timeStr) {
+            const [h, m, s] = timeStr.split('-').map(Number);
+            return h * 3600 + m * 60 + s;
+        }
+
+        function formatDisplayDateTime(dateStr, timeStr) {
+            if (!dateStr) return '';
+            const dateParts = dateStr.split('-');
+            const formattedDate = dateParts.length === 3 ? `${dateParts[2]}.${dateParts[1]}.${dateParts[0]}` : dateStr;
+            const formattedTime = timeStr ? timeStr.replace(/-/g, ':') : '';
+            return formattedTime ? `${formattedDate} ${formattedTime}` : formattedDate;
+        }
+
+        function updateSlider() {
+            if (currentScaleMode === 'heat' && !isSearching) {
+                timeSlider.max = 86399; // 24 * 60 * 60 - 1
+                if (timeGroups.length > 0 && currentTimeIndex < timeGroups.length) {
+                    timeSlider.value = timeToSeconds(timeGroups[currentTimeIndex].time.replace(/:/g, '-'));
+                }
+            } else {
+                timeSlider.max = Math.max(0, timeGroups.length - 1);
+                timeSlider.value = currentTimeIndex;
+            }
+            
+            if (timeGroups.length === 0) {
+                currentTimeDisplay.innerText = "00:00:00";
+            } else if (currentScaleMode === 'heat' && !isSearching) {
+                const totalSeconds = parseInt(timeSlider.value);
+                const h = Math.floor(totalSeconds / 3600);
+                const m = Math.floor((totalSeconds % 3600) / 60);
+                const s = totalSeconds % 60;
+                currentTimeDisplay.innerText = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+            } else if (isSearching && timeGroups[currentTimeIndex]) {
+                const group = timeGroups[currentTimeIndex];
+                currentTimeDisplay.innerText = formatDisplayDateTime(group.date, group.time);
+            }
+
+            if (isSearching) {
+                updateSearchResultsActiveItem();
+            }
+        }
+
+        function updateHeatmap() {
+            const overlay = document.getElementById('heatmap-overlay');
+            if (currentScaleMode !== 'heat' || isSearching || timeGroups.length === 0) {
+                overlay.style.background = 'transparent';
+                return;
+            }
+
+            // Erstelle einen Gradienten basierend auf den Zeitstempeln
+            const points = timeGroups.map(tg => {
+                const sec = timeToSeconds(tg.time.replace(/:/g, '-'));
+                return (sec / 86399) * 100;
+            });
+
+            // Wir bauen einen Gradienten, der an den Stellen mit Daten blau ist
+            let gradientParts = [];
+            gradientParts.push('transparent 0%');
+            
+            points.forEach(p => {
+                gradientParts.push(`transparent ${p - 0.3}%`);
+                gradientParts.push(`#0078d4 ${p - 0.2}%`);
+                gradientParts.push(`#0078d4 ${p + 0.2}%`);
+                gradientParts.push(`transparent ${p + 0.3}%`);
+            });
+            
+            gradientParts.push('transparent 100%');
+            overlay.style.background = `linear-gradient(to right, ${gradientParts.join(', ')})`;
+        }
+        
+        function clearSearch() {
+            if (searchInput) {
+                searchInput.value = '';
+                const event = new Event('input');
+                searchInput.dispatchEvent(event);
+            }
+        }
+
+        searchInput.oninput = () => {
+            const query = searchInput.value.toLowerCase().trim();
+            currentSearchQuery = query;
+
+            // X-Button ein/ausblenden
+            const searchClear = document.getElementById('search-clear');
+            if (searchClear) {
+                searchClear.style.display = query.length > 0 ? 'block' : 'none';
+            }
+
+            if (query.length === 0) {
+                if (isSearching) {
+                    // Merke uns den aktuell gewählten Zeitpunkt der Suche
+                    let lastSearchTime = null;
+                    let lastSearchDate = null;
+                    if (timeGroups[currentTimeIndex]) {
+                        lastSearchTime = timeGroups[currentTimeIndex].time.replace(/-/g, ':');
+                        lastSearchDate = timeGroups[currentTimeIndex].date;
+                    }
+
+                    isSearching = false;
+                    currentScaleMode = previousScaleMode;
+                    lastRefreshKey = ""; // Force reload of day data
+                    timeGroups = []; // Reset until refreshUI loads correct data
+                    pendingTargetTime = lastSearchTime;
+
+                    // Falls wir in der Suche ein Bild eines anderen Tages hatten, wechseln wir dorthin
+                    if (lastSearchDate && lastSearchDate !== selectedDate) {
+                        selectedDate = lastSearchDate;
+                        renderDatePicker();
+                    }
+
+                    // UI Sichtbarkeit zurücksetzen
+                    searchResultsInfo.style.display = 'none';
+                    searchResultsList.style.display = 'none';
+                    datePicker.style.display = 'flex';
+                    if (document.getElementById('date-picker-loading')) {
+                        document.getElementById('date-picker-loading').style.display = 'block';
+                    }
+
+                    updateScaleUI(); // Buttons wieder aktivieren
+                    refreshUI();
+                } else {
+                    searchResultsInfo.style.display = 'none';
+                    searchResultsList.style.display = 'none';
+                    datePicker.style.display = 'flex';
+                    updateScaleUI(); 
+                    refreshUI();
+                }
+                return;
+            }
+
+            if (!isSearching) {
+                previousScaleMode = currentScaleMode;
+                isSearching = true;
+            }
+            datePicker.style.display = 'none';
+            searchResultsList.style.display = 'flex';
+            
+            // Bei Suche automatisch in Fit-Modus wechseln
+            if (currentScaleMode !== 'fit') {
+                currentScaleMode = 'fit';
+            }
+            updateScaleUI(); 
+            
+            performSearch(query);
+        };
+
+        async function performSearch(query) {
+            searchResults = [];
+            searchResultsInfo.style.display = 'block';
+            searchResultsInfo.innerText = translations.viewer.searching.active;
+            
+            // Verstecke Kalender-Ladeanzeige während der Suche
+            if (document.getElementById('date-picker-loading')) {
+                document.getElementById('date-picker-loading').style.display = 'none';
+            }
+
+            try {
+                const results = await ipcRenderer.invoke('search-metadata', query);
+                
+                // Race condition check: Sind wir noch bei dieser Suche und immer noch im Suchmodus?
+                if (query !== currentSearchQuery || !isSearching) {
+                    console.log('Search query changed or search cancelled, ignoring results for:', query);
+                    return;
+                }
+
+                searchResults = results;
+                searchResultsInfo.innerText = translations.viewer.searching.results.replace('{count}', searchResults.length);
+                timeGroups = searchResults;
+                currentTimeIndex = 0;
+                renderSearchResultsList();
+                updateSlider();
+                updateHeatmap();
+                displayCurrentTimeGroup();
+            } catch (err) {
+                if (query === currentSearchQuery && isSearching) {
+                    console.error('Search failed', err);
+                    searchResultsInfo.innerText = translations.viewer.searching.error;
+                }
+            }
+        }
+
+
+        function renderSearchResultsList() {
+            searchResultsList.innerHTML = '';
+            searchResults.forEach((res, index) => {
+                const item = document.createElement('div');
+                item.className = 'search-result-item';
+                if (index === currentTimeIndex) item.classList.add('active');
+                
+                item.innerText = formatDisplayDateTime(res.date, res.time);
+                
+                item.onclick = () => {
+                    currentTimeIndex = index;
+                    updateSlider();
+                    displayCurrentTimeGroup();
+                };
+                searchResultsList.appendChild(item);
+            });
+        }
+
+        function updateSearchResultsActiveItem() {
+            const items = searchResultsList.querySelectorAll('.search-result-item');
+            items.forEach((item, index) => {
+                if (index === currentTimeIndex) {
+                    item.classList.add('active');
+                    item.scrollIntoView({ block: 'nearest' });
+                } else {
+                    item.classList.remove('active');
+                }
+            });
+        }
+
+        let lastAvailableDatesStr = "";
+        async function scanAvailableDates() {
+            console.log('--- Calendar Scan Start ---');
+            
+            // Lade-Indikator anzeigen, falls er versteckt war UND wir nicht gerade suchen
+            if (document.getElementById('date-picker-loading') && !isSearching) {
+                document.getElementById('date-picker-loading').style.display = 'block';
+            }
+            
+            try {
+                const dates = await ipcRenderer.invoke('get-available-dates');
+                const newAvailableDates = new Set(dates);
+                
+                // Zusätzlich die Ordnerstruktur scannen für den Fall, dass noch nicht alles in der DB ist
+                // (wird seltener nötig sein, wenn Hintergrund-Indizierung läuft)
+                if (currentConfigDir) {
+                    const baseDir = path.join(currentConfigDir, 'screenRecorder');
+                    if (fs.existsSync(baseDir)) {
+                        const years = fs.readdirSync(baseDir).filter(y => /^\d{4}$/.test(y));
+                        years.forEach(year => {
+                            const yearDir = path.join(baseDir, year);
+                            const months = fs.readdirSync(yearDir).filter(m => /^\d{2}$/.test(m));
+                            months.forEach(month => {
+                                const monthDir = path.join(yearDir, month);
+                                try {
+                                    const days = fs.readdirSync(monthDir).filter(d => /^\d{2}$/.test(d));
+                                    days.forEach(day => {
+                                        newAvailableDates.add(`${year}-${month}-${day}`);
+                                    });
+                                } catch (e) {}
+                            });
+                        });
+                    }
+                }
+
+                const newDatesStr = Array.from(newAvailableDates).sort().join(',');
+                console.log(`Scan complete. Found ${newAvailableDates.size} days with captures.`);
+                
+                const loadingEl = document.getElementById('date-picker-loading');
+                const isShowingLoading = loadingEl && loadingEl.style.display !== 'none';
+                if (newDatesStr !== lastAvailableDatesStr || isShowingLoading) {
+                    availableDates = newAvailableDates;
+                    lastAvailableDatesStr = newDatesStr;
+                    renderDatePicker();
+                }
+            } catch (e) { 
+                console.error('Error in scanAvailableDates:', e);
+                datePicker.innerHTML = `<p style="padding:10px;color:red;">${translations.viewer.calendar.error.replace('{error}', e.message)}</p>`;
+            }
+            console.log('--- Calendar Scan End ---');
+        }
+
+        function renderDatePicker() {
+            // Lade-Indikator ausblenden
+            const loadingIndicator = document.getElementById('date-picker-loading');
+            if (loadingIndicator) {
+                loadingIndicator.style.display = 'none';
+            }
+            
+            datePicker.innerHTML = '';
+            
+            const now = new Date();
+            let startYear = now.getFullYear();
+            let startMonth = now.getMonth();
+            
+            // Wenn wir verfügbare Daten haben, ermittle den ältesten Monat
+            if (availableDates.size > 0) {
+                const sortedDates = Array.from(availableDates).sort();
+                const oldestDate = new Date(sortedDates[0]);
+                startYear = oldestDate.getFullYear();
+                startMonth = oldestDate.getMonth();
+            }
+
+            const currentYear = now.getFullYear();
+            const currentMonth = now.getMonth();
+
+            // Erstelle Monate von heute rückwärts bis zum ältesten Datum
+            let iterYear = currentYear;
+            let iterMonth = currentMonth;
+
+            while (iterYear > startYear || (iterYear === startYear && iterMonth >= startMonth)) {
+                datePicker.appendChild(createMonthElement(iterYear, iterMonth));
+                
+                iterMonth--;
+                if (iterMonth < 0) {
+                    iterMonth = 11;
+                    iterYear--;
+                }
+            }
+        }
+
+        function createMonthElement(year, month) {
+            const container = document.createElement('div');
+            container.className = 'month-container';
+
+            const now = new Date();
+            const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+
+            let locale = 'en-US';
+            if (translations.viewer && translations.viewer.loading_calendar) {
+                locale = translations.viewer.loading_calendar.startsWith('Lade') ? 'de-DE' : 'en-US';
+            }
+            const monthName = new Intl.DateTimeFormat(locale, { month: 'long', year: 'numeric' }).format(new Date(year, month));
+            const header = document.createElement('div');
+            header.className = 'month-name';
+            header.innerText = monthName;
+            container.appendChild(header);
+
+            const grid = document.createElement('div');
+            grid.className = 'days-grid';
+
+            if (translations.viewer && translations.viewer.calendar && translations.viewer.calendar.days) {
+                const daysArr = [
+                    translations.viewer.calendar.days.mo,
+                    translations.viewer.calendar.days.tu,
+                    translations.viewer.calendar.days.we,
+                    translations.viewer.calendar.days.th,
+                    translations.viewer.calendar.days.fr,
+                    translations.viewer.calendar.days.sa,
+                    translations.viewer.calendar.days.su
+                ];
+                daysArr.forEach(day => {
+                    const dh = document.createElement('div');
+                    dh.className = 'day-header';
+                    dh.innerText = day;
+                    grid.appendChild(dh);
+                });
+            } else {
+                // Fallback wenn Übersetzungen fehlen
+                ['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su'].forEach(day => {
+                    const dh = document.createElement('div');
+                    dh.className = 'day-header';
+                    dh.innerText = day;
+                    grid.appendChild(dh);
+                });
+            }
+
+            const firstDay = new Date(year, month, 1).getDay(); // 0 is Sunday
+            const daysInMonth = new Date(year, month + 1, 0).getDate();
+
+            // Offset für Montag als ersten Tag
+            let offset = firstDay === 0 ? 6 : firstDay - 1;
+
+            for (let i = 0; i < offset; i++) {
+                const empty = document.createElement('div');
+                empty.className = 'day empty';
+                grid.appendChild(empty);
+            }
+
+            for (let day = 1; day <= daysInMonth; day++) {
+                const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+                const dayEl = document.createElement('div');
+                dayEl.className = 'day';
+                if (availableDates.has(dateStr)) dayEl.classList.add('has-data');
+                if (dateStr === selectedDate) dayEl.classList.add('selected');
+                if (dateStr === todayStr) dayEl.classList.add('today');
+                dayEl.innerText = day;
+                dayEl.onclick = () => selectDate(dateStr);
+                grid.appendChild(dayEl);
+            }
+
+            container.appendChild(grid);
+            return container;
+        }
+
+        function selectDate(dateStr) {
+            selectedDate = dateStr;
+            renderDatePicker();
+            // Respektiere startView beim Datumswechsel
+            currentTimeIndex = (currentStartView === 'earliest') ? 0 : 999999;
+            refreshUI().then(() => {
+                if (currentScaleMode === 'heat') {
+                    updateHeatmap();
+                }
+            });
+        }
+
+        // Da Tray und Viewer getrennte Prozesse sind, pollt der Viewer alle 30s nach neuen Bildern
+        let lastScanTime = 0;
+        setInterval(async () => {
+            if (currentConfigDir && !isSearching) {
+                const now = Date.now();
+                const today = new Date().toISOString().split('T')[0];
+                
+                // Nur scannen wenn:
+                // 1. Der ausgewählte Tag HEUTE ist (wir erwarten neue Daten)
+                // 2. ODER wir seit 5 Minuten nicht mehr gescannt haben (allgemeiner Refresh)
+                if (selectedDate === today || (now - lastScanTime > 300000)) {
+                    scanAvailableDates();
+                    await refreshUI();
+                    lastScanTime = now;
+                }
+            }
+        }, 30000);
+
+        async function refreshUI() {
+            if (!currentConfigDir || isSearching) return;
+            
+            console.log('Refreshing UI for date:', selectedDate);
+            
+            // 1. Zuerst aus der Datenbank laden (schnell)
+            let captures = [];
+            try {
+                captures = await ipcRenderer.invoke('get-day-captures', selectedDate);
+                dayCapturesCache = {};
+                if (Array.isArray(captures)) {
+                    captures.forEach(c => {
+                        dayCapturesCache[c.time] = c;
+                    });
+                }
+            } catch (err) {
+                console.error('Failed to load day captures from DB', err);
+            }
+
+            const today = new Date().toISOString().split('T')[0];
+            const groups = {}; // { 'HH-mm-ss': { displayIndex: path } }
+            let fileCount = 0;
+
+            // 2. Falls heute, ODER falls Datenbank leer ist, Dateisystem prüfen
+            // Ansonsten vertrauen wir der Datenbank (viel schneller)
+            if (selectedDate === today || captures.length === 0) {
+                const [year, month, day] = selectedDate.split('-');
+                const dayDir = path.join(currentConfigDir, 'screenRecorder', year, month, day);
+                
+                if (fs.existsSync(dayDir)) {
+                    const displays = fs.readdirSync(dayDir).filter(d => d.startsWith('screen'));
+                    displays.forEach(displayDir => {
+                        const displayIndex = displayDir.replace('screen', '');
+                        const screenDir = path.join(dayDir, displayDir);
+                        if (fs.existsSync(screenDir)) {
+                            const files = fs.readdirSync(screenDir).filter(f => /\.(jpg|jpeg|png)$/i.test(f));
+                            fileCount += files.length;
+                            files.forEach(f => {
+                                const timePart = f.split('.')[0]; // HH-mm-ss.ext
+                                if (!groups[timePart]) groups[timePart] = {};
+                                groups[timePart][displayIndex] = path.join(screenDir, f);
+                            });
+                        }
+                    });
+                }
+            }
+
+            // Wenn wir Daten in der DB haben, diese bevorzugen/mischen
+            captures.forEach(c => {
+                const timePart = c.time.replace(/:/g, '-');
+                if (!groups[timePart]) {
+                    groups[timePart] = c.files;
+                    fileCount += Object.keys(c.files).length;
+                }
+            });
+
+            if (fileCount === 0 && captures.length === 0) {
+                content.innerHTML = `<p>${translations.viewer.no_captures}</p>`;
+                timeSlider.max = 0;
+                timeSlider.value = 0;
+                currentTimeDisplay.innerText = "00:00:00";
+                lastRefreshKey = "";
+                return;
+            }
+            
+            // Performance: Nur UI updaten wenn sich die Dateianzahl oder der Pfad geändert hat
+            const currentRefreshKey = `${selectedDate}-${fileCount}`;
+            if (currentRefreshKey === lastRefreshKey) {
+                return;
+            }
+            lastRefreshKey = currentRefreshKey;
+
+            const sortedTimes = Object.keys(groups).sort();
+            
+            // Falls währenddessen die Suche gestartet wurde, hier abbrechen
+            if (isSearching) return;
+
+            timeGroups = sortedTimes.map(t => ({
+                time: t.replace(/-/g, ':'),
+                files: groups[t]
+            }));
+
+            console.log(`Initial display for ${selectedDate}, total timeGroups: ${timeGroups.length}`);
+            if (timeGroups.length > 0) {
+                // Position bestimmen
+                if (pendingTargetTime) {
+                    const idx = timeGroups.findIndex(g => g.time === pendingTargetTime);
+                    if (idx !== -1) {
+                        currentTimeIndex = idx;
+                    }
+                    pendingTargetTime = null; // Reset
+                } else if (currentTimeIndex === 999999) {
+                    currentTimeIndex = timeGroups.length - 1;
+                } else if (currentTimeIndex >= timeGroups.length) {
+                    currentTimeIndex = timeGroups.length - 1;
+                }
+                
+                console.log(`Starting at index: ${currentTimeIndex}`);
+                updateSlider();
+                updateHeatmap();
+                await displayCurrentTimeGroup();
+            } else {
+                const msg = (translations.viewer && translations.viewer.no_captures) ? translations.viewer.no_captures : 'Keine Bilder in den Display-Ordnern gefunden.';
+                content.innerHTML = `<p>${msg}</p>`;
+                updateSlider();
+                updateHeatmap();
+            }
+        }
+
+        async function displayCurrentTimeGroup() {
+            const group = timeGroups[currentTimeIndex];
+            console.log('displayCurrentTimeGroup - Index:', currentTimeIndex, 'Group:', group);
+            
+            // UI sofort aktualisieren (Bilder)
+            if (group) {
+                // Wenn wir suchen, müssen wir das Datum aus der Gruppe nehmen, sonst das globale selectedDate
+                const effectiveDate = isSearching ? group.date : selectedDate;
+
+                if (currentScaleMode === 'heat' && !isSearching) {
+                    // Im Heat-Modus zeigt das Display die Zeit vom Slider, nicht die Zeit des nächsten Screenshots
+                    const totalSeconds = parseInt(timeSlider.value);
+                    const h = Math.floor(totalSeconds / 3600);
+                    const m = Math.floor((totalSeconds % 3600) / 60);
+                    const s = totalSeconds % 60;
+                    currentTimeDisplay.innerText = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+                } else {
+                    currentTimeDisplay.innerText = isSearching ? formatDisplayDateTime(effectiveDate, group.time) : group.time;
+                }
+                
+                // Setze CSS Variable für Grid Spalten
+                const displayCount = Object.keys(group.files).length;
+                content.style.setProperty('--display-count', displayCount);
+                content.classList.toggle('single-display', displayCount === 1);
+                
+                content.innerHTML = '';
+                Object.keys(group.files).sort().forEach(displayIndex => {
+                    const fullPath = group.files[displayIndex];
+                    
+                    const div = document.createElement('div');
+                    div.className = 'screen-view';
+                    div.setAttribute('data-display', displayIndex);
+
+                    const label = document.createElement('div');
+                    label.className = 'screen-label';
+                    label.innerText = `Display ${displayIndex} - ${group.time.replace(/-/g, ':')}`;
+                    div.appendChild(label);
+
+                    const img = document.createElement('img');
+                    // Pfad für Electron file:// Protokoll vorbereiten
+                    let webPath = fullPath.replace(/\\/g, '/');
+                    // Für Windows Pfade wie C:/... muss file:///C:/... verwendet werden
+                    let finalUrl;
+                    if (webPath.match(/^[a-zA-Z]:/)) {
+                        // Absoluter Windows-Pfad: Laufwerksbuchstabe nicht kodieren
+                        const drive = webPath.substring(0, 2); // "C:"
+                        const rest = webPath.substring(2);
+                        finalUrl = `file:///${drive}${rest.split('/').map(s => encodeURIComponent(s)).join('/')}`;
+                    } else {
+                        // Netzwerkpfad oder relativer Pfad
+                        if (webPath.startsWith('//')) {
+                            // UNC Pfad
+                            finalUrl = `file:${webPath.split('/').map(s => encodeURIComponent(s)).join('/')}`;
+                        } else {
+                            finalUrl = `file://${webPath.split('/').map(s => encodeURIComponent(s)).join('/')}`;
+                        }
+                    }
+                    img.src = finalUrl;
+                    img.onerror = (err) => console.error('Image load error for:', fullPath, err);
+                    img.onclick = () => openFullscreen(img.src);
+                    img.oncontextmenu = (e) => {
+                        e.preventDefault();
+                        showContextMenu(fullPath, e.clientX, e.clientY);
+                    };
+                    
+                    // Setze Flex-Basis basierend auf Monitorbreite falls verfügbar
+                    if (displaysInfo && displaysInfo[displayIndex]) {
+                        const dInfo = displaysInfo[displayIndex];
+                        const width = dInfo.bounds.width;
+                        const height = dInfo.bounds.height;
+                        
+                        if (currentScaleMode === 'fit') {
+                            div.style.aspectRatio = `${width} / ${height}`;
+                            img.style.objectFit = 'contain';
+                        } else if (currentScaleMode === 'grid') {
+                            img.style.objectFit = 'contain';
+                        } else { // List
+                            div.style.aspectRatio = 'auto';
+                            img.style.objectFit = 'contain';
+                        }
+                    }
+
+                    div.appendChild(img);
+                    content.appendChild(div);
+                });
+            } else {
+                if (currentScaleMode === 'heat' && !isSearching) {
+                    const msg = (translations.viewer && translations.viewer.meta) ? translations.viewer.meta.no_screenshot_at_time : 'Kein Screenshot für diese Zeit vorhanden.';
+                    content.innerHTML = `<p style="color: #666; padding: 20px;">${msg}</p>`;
+                }
+                // Metadaten-Listen leeren
+                titlesList.innerHTML = '';
+                filesList.innerHTML = '';
+                urlsList.innerHTML = '';
+                callsList.innerHTML = '';
+                ocrTextDisplay.innerText = '';
+                return;
+            }
+            
+            // Lade-Status für Metadaten anzeigen
+            titlesList.innerHTML = `<tr><td style="color: #888; font-style: italic;">${translations.viewer.meta.loading_meta}</td></tr>`;
+            filesList.innerHTML = `<tr><td style="color: #888; font-style: italic;">${translations.viewer.meta.loading_data}</td></tr>`;
+            urlsList.innerHTML = `<tr><td colspan="3" style="color: #888; font-style: italic;">${translations.viewer.meta.loading_urls}</td></tr>`;
+            callsList.innerHTML = `<tr><td colspan="2" style="color: #888; font-style: italic;">${translations.viewer.meta.loading_meta}</td></tr>`;
+            ocrTextDisplay.innerText = translations.viewer.meta.loading_ocr;
+
+            // Lade Metadaten aus der Datenbank
+            try {
+                const groupTime = group.time;
+                const effectiveDate = isSearching ? group.date : selectedDate;
+                let metaData = null;
+                const timeKey = groupTime.replace(/:/g, '-');
+                
+                console.log('Fetching meta for:', effectiveDate, timeKey);
+
+                // Versuche zuerst aus dem Cache zu laden
+                if (!isSearching && dayCapturesCache && dayCapturesCache[timeKey]) {
+                    metaData = dayCapturesCache[timeKey];
+                    console.log('Meta from cache:', metaData);
+                } else {
+                    // Fallback auf Einzelabfrage (z.B. bei Suche)
+                    metaData = await ipcRenderer.invoke('get-capture-meta', { date: effectiveDate, time: timeKey });
+                    console.log('Meta from IPC:', metaData);
+                }
+
+                // Prüfen, ob wir immer noch bei der gleichen Gruppe sind
+                const currentGroup = timeGroups[currentTimeIndex];
+                if (!currentGroup || currentGroup.time !== groupTime) {
+                    console.log('Meta fetch returned, but index/time changed. Skipping UI update.');
+                    return;
+                }
+
+                const meta = metaData ? (metaData.meta || metaData) : null;
+                
+                // Vor dem Befüllen die Lade-Indikatoren entfernen
+                titlesList.innerHTML = '';
+                filesList.innerHTML = '';
+                urlsList.innerHTML = '';
+                callsList.innerHTML = '';
+                ocrTextDisplay.innerText = translations.viewer.meta.no_ocr;
+
+                if (meta) {
+                    console.log('Rendering meta for:', groupTime);
+                    const activeWindow = meta.activeWindow || '';
+
+                    if (meta.ocrText) {
+                        ocrTextDisplay.innerText = meta.ocrText;
+                    }
+                    if (meta.titles) {
+                        const titles = Array.isArray(meta.titles) ? meta.titles : (typeof meta.titles === 'string' ? meta.titles.split(' | ') : []);
+                        if (titles.length === 0) {
+                            const tr = document.createElement('tr');
+                            tr.innerHTML = `<td style="color: #888; font-style: italic;">${translations.viewer.meta.no_titles}</td>`;
+                            titlesList.appendChild(tr);
+                        }
+                        titles.forEach(t => {
+                            const tr = document.createElement('tr');
+                            if (activeWindow && t === activeWindow) {
+                                tr.className = 'active-window-row';
+                            }
+                            tr.innerHTML = `<td>${t}</td>`;
+                            titlesList.appendChild(tr);
+                        });
+                    } else {
+                        const tr = document.createElement('tr');
+                        tr.innerHTML = `<td style="color: #888; font-style: italic;">${translations.viewer.meta.no_titles_list}</td>`;
+                        titlesList.appendChild(tr);
+                    }
+                    
+                    const openFiles = Array.isArray(meta.openFiles) ? meta.openFiles : (typeof meta.openFiles === 'string' ? meta.openFiles.split(' | ') : []);
+                    if (openFiles.length > 0) {
+                        openFiles.forEach(f => {
+                            const tr = document.createElement('tr');
+                            tr.innerHTML = `<td>${f}</td>`;
+                            filesList.appendChild(tr);
+                        });
+                    } else {
+                        const tr = document.createElement('tr');
+                        tr.innerHTML = `<td style="color: #888; font-style: italic;">${translations.viewer.meta.no_files}</td>`;
+                        filesList.appendChild(tr);
+                    }
+
+                    // URLs anzeigen
+                    const urls = Array.isArray(meta.urls) ? meta.urls : (typeof meta.urls === 'string' ? meta.urls.split(' | ') : []);
+                    if (urls.length > 0) {
+                        urls.forEach(u => {
+                            // In der neuen URL-Tabelle anzeigen
+                            const trUrl = document.createElement('tr');
+                            trUrl.innerHTML = `
+                                <td style="color: #666;">${group.time.replace(/-/g, ':')}</td>
+                                <td style="color: #666; max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${activeWindow}">${activeWindow}</td>
+                                <td style="color: #0078d4; cursor: pointer; text-decoration: underline;" onclick="shell.openExternal('${u}')">${u}</td>
+                            `;
+                            urlsList.appendChild(trUrl);
+                        });
+                    } else {
+                        const tr = document.createElement('tr');
+                        tr.innerHTML = `<td colspan="3" style="color: #888; font-style: italic;">${translations.viewer.meta.no_urls}</td>`;
+                        urlsList.appendChild(tr);
+                    }
+
+                    // Anrufe anzeigen
+                    const calls = Array.isArray(meta.calls) ? meta.calls : (typeof meta.calls === 'string' ? meta.calls.split(' | ') : []);
+                    if (calls.length > 0) {
+                        calls.forEach(c => {
+                            const tr = document.createElement('tr');
+                            tr.innerHTML = `<td style="color: #666;">${group.time.replace(/-/g, ':')}</td><td>${c}</td>`;
+                            callsList.appendChild(tr);
+                        });
+                    } else {
+                        const tr = document.createElement('tr');
+                        tr.innerHTML = `<td colspan="2" style="color: #888; font-style: italic;">${translations.viewer.meta.no_calls}</td>`;
+                        callsList.appendChild(tr);
+                    }
+                } else {
+                    console.warn('Meta not found in DB for:', effectiveDate, timeKey);
+                    // Lade-Status war schon weg, jetzt Fehlermeldung setzen
+                    titlesList.innerHTML = '';
+                    const tr = document.createElement('tr');
+                    tr.innerHTML = `<td style="color: #d9534f;">${translations.viewer.meta.not_found}</td>`;
+                    titlesList.appendChild(tr);
+                    
+                    filesList.innerHTML = '';
+                    const tr2 = document.createElement('tr');
+                    tr2.innerHTML = `<td style="color: #888; font-style: italic;">${translations.viewer.meta.no_more_data}</td>`;
+                    filesList.appendChild(tr2);
+
+                    urlsList.innerHTML = `<tr><td colspan="3" style="color: #888; font-style: italic;">${translations.viewer.meta.no_more_data}</td></tr>`;
+                }
+            } catch (e) { 
+                console.error('Error loading meta from DB', e); 
+                titlesList.innerHTML = `<tr><td style="color: #d9534f;">${translations.common.error}: ${e.message}</td></tr>`;
+                ocrTextDisplay.innerText = translations.viewer.meta.not_found + ": " + e.message;
+            }
+
+            // Setze CSS Variable für Grid Spalten
+            const displayCount = Object.keys(group.files).length;
+            content.style.setProperty('--display-count', displayCount);
+        }
+
+        function openFullscreen(src) {
+            fullscreenImg.src = src;
+            fullscreenOverlay.style.display = 'flex';
+        }
+
+        function closeFullscreen() {
+            fullscreenOverlay.style.display = 'none';
+        }
+
+        function showContextMenu(filePath, x, y) {
+            // Einfaches Custom-Kontextmenü oder direkt Electron Menu via IPC?
+            // Da wir im Renderer sind, senden wir ein Signal an den Main-Prozess
+            ipcRenderer.send('show-item-context-menu', { filePath, x, y });
+        }
+
+        function openConfig() {
+            ipcRenderer.send('open-config');
+        }
+
+        function switchTab(tabId) {
+            // Remove active class from all tabs and panes
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+            
+            // Add active class to selected tab and pane
+            const selectedTab = Array.from(document.querySelectorAll('.tab')).find(t => t.getAttribute('onclick').includes(tabId));
+            if (selectedTab) selectedTab.classList.add('active');
+            
+            document.getElementById(tabId).classList.add('active');
+
+            if (tabId === 'tab-summary') {
+                updateSummary();
+            }
+            if (tabId === 'tab-urls') {
+                updateUrls();
+            }
+            if (tabId === 'tab-calls') {
+                updateCalls();
+            }
+        }
+
+        async function updateUrls() {
+            urlsList.innerHTML = `<tr><td colspan="3" style="text-align: center; padding: 20px; color: #888;">${translations.viewer.meta.loading_urls}</td></tr>`;
+            try {
+                const dayUrls = await ipcRenderer.invoke('get-day-urls', selectedDate);
+                urlsList.innerHTML = '';
+                if (dayUrls.length === 0) {
+                    urlsList.innerHTML = `<tr><td colspan="3" style="text-align: center; padding: 20px; color: #888;">${translations.viewer.meta.no_urls}</td></tr>`;
+                    return;
+                }
+                dayUrls.forEach(item => {
+                    item.urls.forEach(url => {
+                        const tr = document.createElement('tr');
+                        tr.innerHTML = `<td>${item.time}</td><td>${item.activeWindow}</td><td><a href="#" onclick="shell.openExternal('${url}')">${url}</a></td>`;
+                        urlsList.appendChild(tr);
+                    });
+                });
+            } catch (err) {
+                urlsList.innerHTML = `<tr><td colspan="3">${translations.common.error}: ${err.message}</td></tr>`;
+            }
+        }
+
+        async function updateCalls() {
+            callsList.innerHTML = `<tr><td colspan="2" style="text-align: center; padding: 20px; color: #888;">${translations.viewer.meta.loading_meta}</td></tr>`;
+            try {
+                const dayCalls = await ipcRenderer.invoke('get-day-calls', selectedDate);
+                callsList.innerHTML = '';
+                if (dayCalls.length === 0) {
+                    callsList.innerHTML = `<tr><td colspan="2" style="text-align: center; padding: 20px; color: #888;">${translations.viewer.meta.no_calls}</td></tr>`;
+                    return;
+                }
+                dayCalls.forEach(item => {
+                    item.calls.forEach(call => {
+                        const tr = document.createElement('tr');
+                        tr.innerHTML = `<td>${item.time}</td><td>${call}</td>`;
+                        callsList.appendChild(tr);
+                    });
+                });
+            } catch (err) {
+                callsList.innerHTML = `<tr><td colspan="2">${translations.common.error}: ${err.message}</td></tr>`;
+            }
+        }
+
+        async function updateSummary() {
+            summaryDisplay.value = translations.common.loading;
+            try {
+                const summary = await ipcRenderer.invoke('get-day-summary', selectedDate);
+                summaryDisplay.value = summary;
+            } catch (err) {
+                summaryDisplay.value = translations.common.error + ": " + err.message;
+            }
+        }
+
+        function copySummary() {
+            summaryDisplay.select();
+            document.execCommand('copy');
+            alert(translations.viewer.ai.copy + '!');
+        }
+
+        function switchInnerTab(tab) {
+            document.querySelectorAll('.inner-tab').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.inner-tab-content').forEach(c => c.classList.remove('active'));
+            
+            document.getElementById('inner-tab-' + tab).classList.add('active');
+            document.getElementById('inner-content-' + tab).classList.add('active');
+        }
+
+        async function generateAiSummary() {
+            const promptText = summaryDisplay.value;
+            if (!promptText || promptText.startsWith(translations.viewer.calendar.no_data) || promptText.startsWith(translations.common.loading)) {
+                alert(translations.viewer.calendar.no_data);
+                return;
+            }
+
+            generateAiBtn.disabled = true;
+            switchInnerTab('result');
+            aiResultDisplay.value = translations.viewer.ai.status_loading;
+            aiResultDisplay.style.display = 'block';
+            aiResultMarkdown.style.display = 'none';
+
+            try {
+                const result = await ipcRenderer.invoke('generate-ai-summary', promptText);
+                aiResultDisplay.value = result;
+                
+                // Render Markdown
+                renderMarkdown(result);
+            } catch (err) {
+                aiResultDisplay.value = translations.common.error + ": " + err.message;
+            } finally {
+                generateAiBtn.disabled = false;
+            }
+        }
+
+        function renderMarkdown(md) {
+            if (!md) return;
+            
+            // Einfacher Markdown Parser
+            let html = md
+                // Headlines
+                .replace(/^### (.*$)/gim, '<h3>$1</h3>')
+                .replace(/^## (.*$)/gim, '<h2>$1</h2>')
+                .replace(/^# (.*$)/gim, '<h1>$1</h1>')
+                // Bold
+                .replace(/\*\*(.*)\*\*/gim, '<strong>$1</strong>')
+                // Italic
+                .replace(/\*(.*)\*/gim, '<em>$1</em>')
+                // Inline Code
+                .replace(/`(.*?)`/gim, '<code>$1</code>')
+                // Lists
+                .replace(/^\s*-\s+(.*)$/gim, '<li>$1</li>')
+                .replace(/(<li>.*<\/li>)/sim, '<ul>$1</ul>');
+
+            // Tabellen (sehr einfach gehalten)
+            const lines = html.split('\n');
+            let inTable = false;
+            let tableHtml = '';
+            let newLines = [];
+
+            for (let line of lines) {
+                if (line.includes('|') && line.split('|').length > 2) {
+                    if (!inTable) {
+                        inTable = true;
+                        tableHtml = '<table>';
+                    }
+                    const cells = line.split('|').filter(c => c.trim() !== '' || line.indexOf(c) > 0 && line.indexOf(c) < line.lastIndexOf('|'));
+                    if (line.includes('---')) continue; // Skip separator line
+                    
+                    tableHtml += '<tr>' + cells.map(c => `<td>${c.trim()}</td>`).join('') + '</tr>';
+                } else {
+                    if (inTable) {
+                        tableHtml += '</table>';
+                        newLines.push(tableHtml);
+                        inTable = false;
+                    }
+                    newLines.push(line);
+                }
+            }
+            if (inTable) newLines.push(tableHtml + '</table>');
+            
+            html = newLines.join('\n')
+                // Zeilenumbrüche für Nicht-Listen/Tabellen
+                .replace(/\n\n/g, '<br><br>');
+
+            aiResultMarkdown.innerHTML = html;
+            aiResultMarkdown.style.display = 'block';
+            aiResultDisplay.style.display = 'none';
+        }
+
+        async function checkTrayStatus() {
+            try {
+                const isRunning = await ipcRenderer.invoke('is-tray-running');
+                trayWarning.style.display = isRunning ? 'none' : 'flex';
+            } catch (e) {
+                console.error('checkTrayStatus error:', e);
+            }
+        }
+
+        function copyAiResult() {
+            // Wir kopieren den rohen Text aus der Textarea
+            const textToCopy = aiResultDisplay.value;
+            const tempTexarea = document.createElement('textarea');
+            tempTexarea.value = textToCopy;
+            document.body.appendChild(tempTexarea);
+            tempTexarea.select();
+            document.execCommand('copy');
+            tempTexarea.remove();
+            alert(translations.viewer.ai.copy + '!');
+        }
+
+        function testScreensaver() {
+            ipcRenderer.send('test-screensaver');
+        }
+
+        function openEnergySettings() {
+            ipcRenderer.send('open-windows-energy-settings');
+        }
+
+        function openScreensaverSettings() {
+            ipcRenderer.send('open-windows-screensaver-settings');
+        }
+    </script>
+    <div id="migration-overlay" style="display: none; position: fixed; bottom: 20px; right: 20px; background: white; border: 1px solid #ccc; padding: 15px; border-radius: 8px; box-shadow: 0 4px 15px rgba(0,0,0,0.2); z-index: 2000; min-width: 250px;">
+        <div style="font-weight: bold; margin-bottom: 8px;" id="migration-status">Indexing...</div>
+        <div style="width: 100%; background: #eee; height: 8px; border-radius: 4px; overflow: hidden; margin-bottom: 5px;">
+            <div id="migration-progress-bar" style="width: 0%; height: 100%; background: #0078d4; transition: width 0.3s;"></div>
+        </div>
+        <div id="migration-count" style="font-size: 11px; color: #666;">0 items processed</div>
+    </div>
+</body>
+</html>

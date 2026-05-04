@@ -1,0 +1,16 @@
+{
+  "name": "screen-recorder-screensaver",
+  "productName": "Screen Recorder Screensaver",
+  "version": "1.0.0",
+  "description": "Screensaver for screen recorder with OCR background processing",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron ."
+  },
+  "private": true,
+  "dependencies": {
+    "better-sqlite3": "^12.9.0",
+    "electron-store": "^10.0.0",
+    "tesseract.js": "^7.0.0"
+  }
+}

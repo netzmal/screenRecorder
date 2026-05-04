@@ -1,0 +1,715 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Konfiguration</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            background-color: #f3f3f3;
+        }
+        #container {
+            display: flex;
+            flex: 1;
+            overflow: hidden;
+        }
+        #sidebar {
+            width: 200px;
+            background-color: #e0e0e0;
+            border-right: 1px solid #ccc;
+            padding: 0;
+        }
+        .sidebar-item {
+            padding: 10px 20px;
+            cursor: pointer;
+            background-color: #d0d0d0;
+            font-weight: bold;
+            border-bottom: 1px solid #ccc;
+        }
+        .sidebar-item:hover {
+            background-color: #c0c0c0;
+        }
+        .sidebar-item.active {
+            background-color: #fff;
+            border-right: 1px solid #fff;
+            margin-right: -1px;
+        }
+        #config-frame {
+            flex: 1;
+            padding: 30px;
+            background-color: #fff;
+            overflow-y: auto;
+        }
+        .config-pane {
+            display: none;
+        }
+        .config-pane.active {
+            display: block;
+        }
+        .config-group {
+            margin-bottom: 20px;
+        }
+        .config-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        .config-group input[type="text"], .config-group input[type="number"] {
+            width: 80%;
+            padding: 8px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+        }
+        .config-group input[type="checkbox"] {
+            width: 20px;
+            height: 20px;
+            cursor: pointer;
+        }
+        .checkbox-container {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .config-group button {
+            padding: 8px 15px;
+            cursor: pointer;
+        }
+        #footer {
+            padding: 15px 30px;
+            background-color: #eee;
+            border-top: 1px solid #ccc;
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+        }
+        .btn {
+            padding: 8px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        .btn-primary {
+            background-color: #0078d4;
+            color: white;
+        }
+        .btn-secondary {
+            background-color: #e1e1e1;
+            color: black;
+        }
+        .btn:hover {
+            opacity: 0.9;
+        }
+        .btn-warning {
+            background-color: #d83b01;
+            color: white;
+        }
+        
+        /* Modal Styles */
+        #progress-modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+            z-index: 2000;
+            justify-content: center;
+            align-items: center;
+        }
+        .modal-content {
+            background: white;
+            padding: 25px;
+            border-radius: 8px;
+            width: 400px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+        }
+        .progress-container {
+            width: 100%;
+            background: #eee;
+            border-radius: 4px;
+            height: 20px;
+            margin: 15px 0;
+            overflow: hidden;
+        }
+        #progress-bar {
+            width: 0%;
+            height: 100%;
+            background: #0078d4;
+            transition: width 0.3s;
+        }
+        #progress-status {
+            font-size: 13px;
+            color: #444;
+            margin-bottom: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div id="container">
+        <div id="sidebar">
+            <div id="sidebar-storage" class="sidebar-item active" onclick="switchPane('pane-storage', this)">Speicherort</div>
+            <div id="sidebar-screenshot" class="sidebar-item" onclick="switchPane('pane-screenshot', this)">Screenshot</div>
+            <div id="sidebar-ocr" class="sidebar-item" onclick="switchPane('pane-ocr', this)">OCR</div>
+            <div id="sidebar-ai" class="sidebar-item" onclick="switchPane('pane-ai', this)">KI (ChatGPT)</div>
+            <div id="sidebar-system" class="sidebar-item" onclick="switchPane('pane-system', this)">System</div>
+            <div id="sidebar-general" class="sidebar-item" onclick="switchPane('pane-general', this)">Allgemein</div>
+        </div>
+        <div id="config-frame">
+            <div id="pane-storage" class="config-pane active">
+                <h2 id="title-storage">Speicherort</h2>
+                <div class="config-group">
+                    <label id="label-screenshot-dir" for="screenshot-dir">Speicherort für Screenshots:</label>
+                    <div style="display: flex; gap: 10px;">
+                        <input type="text" id="screenshot-dir" readonly>
+                        <button id="browse-btn">Durchsuchen...</button>
+                    </div>
+                </div>
+            </div>
+
+            <div id="pane-screenshot" class="config-pane">
+                <h2 id="title-screenshot">Screenshot Einstellungen</h2>
+                <div class="config-group">
+                    <label id="label-interval" for="interval">Aufnahme-Intervall (Sekunden):</label>
+                    <input type="number" id="interval" min="5" max="3600">
+                </div>
+                <div class="config-group">
+                    <div class="checkbox-container">
+                        <input type="checkbox" id="only-on-changes">
+                        <label id="label-only-on-changes" for="only-on-changes" style="margin-bottom: 0;">Nur speichern, wenn sich das Bild geändert hat</label>
+                    </div>
+                </div>
+                <div class="config-group" style="margin-top: 20px; padding-top: 20px; border-top: 1px solid #eee;">
+                    <div class="checkbox-container">
+                        <input type="checkbox" id="window-change-screenshot">
+                        <label id="label-window-change" for="window-change-screenshot" style="margin-bottom: 0;">Zusätzlicher Screenshot bei Fensterwechsel</label>
+                    </div>
+                </div>
+                <div id="window-change-delay-group" class="config-group" style="margin-left: 30px;">
+                    <label id="label-window-change-delay" for="window-change-delay">Verzögerung nach Fensterwechsel (Sekunden):</label>
+                    <input type="number" id="window-change-delay" min="1" max="60">
+                </div>
+                <div class="config-group" style="margin-top: 20px; padding-top: 20px; border-top: 1px solid #eee;">
+                    <div class="checkbox-container">
+                        <input type="checkbox" id="display-change-screenshot">
+                        <label id="label-display-change" for="display-change-screenshot" style="margin-bottom: 0;">Zusätzlicher Screenshot bei Monitor-Fokuswechsel</label>
+                    </div>
+                </div>
+                <div id="display-change-delay-group" class="config-group" style="margin-left: 30px;">
+                    <label id="label-display-change-delay" for="display-change-delay">Verzögerung nach Monitorwechsel (Sekunden):</label>
+                    <input type="number" id="display-change-delay" min="1" max="60">
+                </div>
+                <div class="config-group" style="margin-top: 20px; padding-top: 20px; border-top: 1px solid #eee;">
+                    <div class="checkbox-container">
+                        <input type="checkbox" id="skip-on-powersave">
+                        <label id="label-skip-on-powersave" for="skip-on-powersave" style="margin-bottom: 0;">Keine Screenshots bei Bildschirmschoner / Standby</label>
+                    </div>
+                </div>
+                <div class="config-group">
+                    <label id="label-format" for="screenshot-format">Bildformat (JPG oder PNG):</label>
+                    <select id="screenshot-format" style="width: 80%; padding: 8px; border: 1px solid #ccc; border-radius: 4px;">
+                        <option value="jpg">JPG</option>
+                        <option value="png">PNG</option>
+                    </select>
+                </div>
+            </div>
+
+            <div id="pane-ocr" class="config-pane">
+                <h2 id="title-ocr">OCR Einstellungen</h2>
+                <div class="config-group">
+                    <div class="checkbox-container">
+                        <input type="checkbox" id="ocr-enabled">
+                        <label id="label-ocr-enabled" for="ocr-enabled" style="margin-bottom: 0;">Texterkennung (OCR) aktivieren</label>
+                    </div>
+                </div>
+                <div class="config-group">
+                    <label id="label-ocr-language" for="ocr-language">OCR Sprache (z.B. deu, eng, deu+eng):</label>
+                    <input type="text" id="ocr-language">
+                    <p id="ocr-language-help" style="font-size: 11px; color: #666; margin-top: 5px;">Mehrere Sprachen können mit '+' getrennt werden (z.B. deu+eng).</p>
+                </div>
+                <div class="config-group">
+                    <div class="checkbox-container">
+                        <input type="checkbox" id="ocr-fast-mode">
+                        <label id="label-ocr-fast-mode" for="ocr-fast-mode" style="margin-bottom: 0;">Schneller Modus (ungenauer, aber ressourcensparend)</label>
+                    </div>
+                    <p id="ocr-fast-mode-help" style="font-size: 11px; color: #666; margin-left: 30px; margin-top: 5px;">Skaliert Bilder vor der Erkennung und deaktiviert Wörterbücher.</p>
+                </div>
+                <div class="config-group" style="margin-top: 10px; padding-top: 20px; border-top: 1px solid #eee;">
+                    <label id="label-screensaver-title">Windows Bildschirmschoner:</label>
+                    <p id="label-screensaver-help" style="font-size: 12px; color: #666;">Führt die Texterkennung (OCR) automatisch im Hintergrund durch.</p>
+                    
+                    <div style="display: flex; align-items: flex-end; gap: 14px; margin-bottom: 15px; flex-wrap: wrap;">
+                        <div id="screensaver-options-container" style="display: flex; flex-direction: column; gap: 10px;">
+                            <div id="screensaver-timeout-container" style="display: flex; flex-direction: column; gap: 5px;">
+                                <label id="label-screensaver-timeout" for="screensaver-timeout" style="margin-bottom: 0; font-weight: normal;">Aktivierung nach:</label>
+                                <select id="screensaver-timeout" style="width: 150px; padding: 5px; border: 1px solid #ccc; border-radius: 4px;">
+                                    <option value="60">1 Minute</option>
+                                    <option value="300">5 Minuten</option>
+                                    <option value="900">15 Minuten</option>
+                                    <option value="1800">30 Minuten</option>
+                                    <option value="3600">1 Stunde</option>
+                                </select>
+                            </div>
+                            <div id="screensaver-secure-container" style="display: flex; flex-direction: column; gap: 5px; max-width: 360px;">
+                                <div class="checkbox-container" style="margin-bottom: 0;">
+                                    <input type="checkbox" id="screensaver-require-password">
+                                    <label id="label-screensaver-require-password" for="screensaver-require-password" style="margin-bottom: 0; font-weight: normal;">Anmeldung beim Reaktivieren erforderlich</label>
+                                </div>
+                            </div>
+                        </div>
+                        <button id="toggle-screensaver-btn" class="btn btn-primary" onclick="toggleScreensaver()"></button>
+                    </div>
+
+                    <div id="screensaver-settings-group" style="display: flex; gap: 10px; margin-top: 15px; flex-wrap: wrap;">
+                        <button id="win-energy-settings-btn" class="btn btn-secondary" onclick="openEnergySettings()">Windows Energieeinstellungen</button>
+                        <button id="win-screensaver-settings-btn" class="btn btn-secondary" onclick="openScreensaverSettings()">Windows Bildschirmschoner</button>
+                    </div>
+                    <div id="screensaver-warning" style="display: none; color: #856404; background-color: #fff3cd; border: 1px solid #ffeeba; padding: 10px; border-radius: 4px; margin-top: 15px; font-size: 12px;"></div>
+                </div>
+
+                <div class="config-group" style="margin-top: 10px; padding-top: 20px; border-top: 1px solid #eee;">
+                    <label id="label-maintenance">Wartung:</label>
+                    <p id="label-maintenance-help" style="font-size: 12px; color: #666;">Analysiere alle vorhandenen Screenshots, für die noch kein OCR-Text extrahiert wurde.</p>
+                    <button id="batch-ocr-btn" class="btn btn-warning">Batch OCR starten</button>
+                </div>
+            </div>
+
+            <div id="pane-ai" class="config-pane">
+                <h2 id="title-ai">KI Einstellungen</h2>
+                <div class="config-group">
+                    <label id="label-chatgpt-api-key" for="chatgpt-api-key">ChatGPT API Key (OpenAI):</label>
+                    <input type="text" id="chatgpt-api-key" placeholder="sk-...">
+                    <p id="label-chatgpt-help" style="font-size: 11px; color: #666; margin-top: 5px;">Wird benötigt, um automatische Zusammenfassungen im Viewer zu generieren.</p>
+                </div>
+            </div>
+
+            <div id="pane-system" class="config-pane">
+                <h2 id="title-system">System Einstellungen</h2>
+                <div class="config-group">
+                    <div class="checkbox-container">
+                        <input type="checkbox" id="autostart-enabled">
+                        <label id="label-autostart" for="autostart-enabled" style="margin-bottom: 0;">Tray-App automatisch mit Windows starten</label>
+                    </div>
+                    <p id="label-autostart-help" style="font-size: 11px; color: #666; margin-left: 30px; margin-top: 5px;">Erstellt oder entfernt eine Verknüpfung im Autostart-Ordner.</p>
+                </div>
+            </div>
+
+            <div id="pane-general" class="config-pane">
+                <h2 id="title-general">Allgemein</h2>
+                <div class="config-group">
+                    <label id="label-language" for="language">Sprache:</label>
+                    <select id="language" style="width: 80%; padding: 8px; border: 1px solid #ccc; border-radius: 4px;">
+                        <option value="auto">System (Auto)</option>
+                        <option value="en">English</option>
+                        <option value="de">Deutsch</option>
+                    </select>
+                </div>
+                <div class="config-group">
+                    <label id="label-default-mode" for="default-mode">Standard-Ansichtsmodus beim Start:</label>
+                    <select id="default-mode" style="width: 80%; padding: 8px; border: 1px solid #ccc; border-radius: 4px;">
+                        <option value="fit">Fit</option>
+                        <option value="list">List</option>
+                        <option value="grid">Grid</option>
+                        <option value="heat">Heat</option>
+                    </select>
+                </div>
+                <div class="config-group">
+                    <label id="label-start-view" for="start-view">Beim Laden eines Tages anzeigen:</label>
+                    <select id="start-view" style="width: 80%; padding: 8px; border: 1px solid #ccc; border-radius: 4px;">
+                        <option value="latest">Neuester Screenshot</option>
+                        <option value="earliest">Ältester Screenshot</option>
+                    </select>
+                </div>
+                <div class="config-group" style="margin-top: 20px; padding-top: 10px; border-top: 1px solid #eee;">
+                    <label id="label-test-notifications">Benachrichtigungen testen:</label>
+                    <p id="label-test-notifications-help" style="font-size: 12px; color: #666;">Überprüfen, ob Benachrichtigungen auf diesem System korrekt angezeigt werden.</p>
+                    <button id="test-notification-btn" class="btn btn-secondary">Test-Benachrichtigung senden</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="progress-modal">
+        <div class="modal-content">
+            <h3 id="progress-title">Batch OCR Verarbeitung</h3>
+            <div id="progress-status">Suche Dateien...</div>
+            <div class="progress-container">
+                <div id="progress-bar"></div>
+            </div>
+            <div id="progress-percent" style="text-align: center; font-weight: bold; margin-bottom: 20px;">0%</div>
+            <div style="display: flex; justify-content: flex-end;">
+                <button id="abort-ocr-btn" class="btn btn-secondary">Abbrechen</button>
+            </div>
+        </div>
+    </div>
+    <div id="footer">
+        <button id="cancel-btn" class="btn btn-secondary">Abbrechen</button>
+        <button id="save-btn" class="btn btn-primary">Speichern</button>
+    </div>
+
+    <script>
+        const { ipcRenderer } = require('electron');
+        
+        const pathInput = document.getElementById('screenshot-dir');
+        const intervalInput = document.getElementById('interval');
+        const onlyOnChangesInput = document.getElementById('only-on-changes');
+        const ocrEnabledInput = document.getElementById('ocr-enabled');
+        const ocrLanguageInput = document.getElementById('ocr-language');
+        const ocrFastModeInput = document.getElementById('ocr-fast-mode');
+        const windowChangeScreenshotInput = document.getElementById('window-change-screenshot');
+        const windowChangeDelayInput = document.getElementById('window-change-delay');
+        const windowChangeDelayGroup = document.getElementById('window-change-delay-group');
+        const displayChangeScreenshotInput = document.getElementById('display-change-screenshot');
+        const displayChangeDelayInput = document.getElementById('display-change-delay');
+        const displayChangeDelayGroup = document.getElementById('display-change-delay-group');
+        const screenshotFormatSelect = document.getElementById('screenshot-format');
+        const skipOnPowerSaveInput = document.getElementById('skip-on-powersave');
+        const autostartEnabledInput = document.getElementById('autostart-enabled');
+        const chatGptApiKeyInput = document.getElementById('chatgpt-api-key');
+        const defaultModeSelect = document.getElementById('default-mode');
+        const startViewSelect = document.getElementById('start-view');
+        const browseBtn = document.getElementById('browse-btn');
+        const saveBtn = document.getElementById('save-btn');
+        const cancelBtn = document.getElementById('cancel-btn');
+        const batchOcrBtn = document.getElementById('batch-ocr-btn');
+        const testNotificationBtn = document.getElementById('test-notification-btn');
+        const abortOcrBtn = document.getElementById('abort-ocr-btn');
+        const progressModal = document.getElementById('progress-modal');
+        const progressBar = document.getElementById('progress-bar');
+        const progressStatus = document.getElementById('progress-status');
+        const progressPercent = document.getElementById('progress-percent');
+        const languageSelect = document.getElementById('language');
+        const screensaverTimeoutSelect = document.getElementById('screensaver-timeout');
+        const screensaverRequirePasswordInput = document.getElementById('screensaver-require-password');
+        const toggleScreensaverBtn = document.getElementById('toggle-screensaver-btn');
+
+        let translations = {};
+        let screensaverRegistered = false;
+        let appVersion = '';
+
+        // Load current config
+        ipcRenderer.send('get-config');
+        ipcRenderer.on('config-data', (event, data) => {
+            translations = data.translations || {};
+            screensaverRegistered = data.screensaverSystemEnabled || false;
+            appVersion = data.version || '';
+            applyTranslations();
+            
+            pathInput.value = data.dir;
+            intervalInput.value = data.interval;
+            onlyOnChangesInput.checked = data.onlyOnChanges || false;
+            ocrEnabledInput.checked = data.ocrEnabled || false;
+            
+            // Screensaver Status initial setzen
+            ocrLanguageInput.value = data.ocrLanguage || 'deu+eng';
+            ocrFastModeInput.checked = data.ocrFastMode || false;
+            windowChangeScreenshotInput.checked = data.screenshotOnWindowChange || false;
+            windowChangeDelayInput.value = data.windowChangeDelay || 5;
+            displayChangeScreenshotInput.checked = data.screenshotOnDisplayChange || false;
+            displayChangeDelayInput.value = data.displayChangeDelay || 5;
+            screenshotFormatSelect.value = data.screenshotFormat || 'jpg';
+            skipOnPowerSaveInput.checked = data.skipOnPowerSave !== undefined ? data.skipOnPowerSave : true;
+            autostartEnabledInput.checked = data.autostart !== undefined ? data.autostart : true;
+            chatGptApiKeyInput.value = data.chatGptApiKey || '';
+            defaultModeSelect.value = data.defaultMode || 'fit';
+            startViewSelect.value = data.startView || 'latest';
+            languageSelect.value = data.language || 'auto';
+            screensaverTimeoutSelect.value = data.screensaverTimeout || 300;
+            screensaverRequirePasswordInput.checked = data.screensaverRequirePassword || false;
+            
+            updateScreensaverButton();
+            updateWindowChangeVisibility();
+            updateDisplayChangeVisibility();
+        });
+
+        function applyTranslations() {
+            try {
+                if (!translations.config) return;
+                const c = translations.config;
+                const com = translations.common || {};
+
+                let title = c.title || 'Settings';
+                if (appVersion) title += ' - v' + appVersion;
+                document.title = title;
+                
+                // Sidebar
+                if (c.storage) document.getElementById('sidebar-storage').innerText = c.storage.title;
+                if (c.recording) document.getElementById('sidebar-screenshot').innerText = c.recording.title;
+                if (c.ocr && c.ocr.title) document.getElementById('sidebar-ocr').innerText = c.ocr.title.replace(' Einstellungen', '').replace(' Settings', '');
+                if (c.ai && c.ai.title) document.getElementById('sidebar-ai').innerText = c.ai.title.replace(' Einstellungen', '').replace(' Settings', '');
+                if (c.system && c.system.title) document.getElementById('sidebar-system').innerText = c.system.title.replace(' Einstellungen', '').replace(' Settings', '');
+                if (c.general) document.getElementById('sidebar-general').innerText = c.general.title;
+
+                // Storage Pane
+                if (c.storage) {
+                    document.getElementById('title-storage').innerText = c.storage.title;
+                    document.getElementById('label-screenshot-dir').innerText = c.storage.path + ':';
+                    document.getElementById('browse-btn').innerText = c.storage.browse;
+                }
+
+                // Screenshot Pane
+                if (c.recording) {
+                    document.getElementById('title-screenshot').innerText = c.recording.title;
+                    document.getElementById('label-interval').innerText = c.recording.interval + ':';
+                    document.getElementById('label-only-on-changes').innerText = c.recording.only_on_changes;
+                    document.getElementById('label-window-change').innerText = c.recording.window_change;
+                    document.getElementById('label-window-change-delay').innerText = c.recording.window_change_delay + ':';
+                    document.getElementById('label-display-change').innerText = c.recording.display_change;
+                    document.getElementById('label-display-change-delay').innerText = c.recording.display_change_delay + ':';
+                    document.getElementById('label-format').innerText = c.recording.format + ':';
+                    document.getElementById('label-skip-on-powersave').innerText = c.recording.skip_on_powersave;
+                }
+
+                // OCR Pane
+                if (c.ocr) {
+                    document.getElementById('title-ocr').innerText = c.ocr.title;
+                    document.getElementById('label-ocr-enabled').innerText = c.ocr.enabled;
+                    document.getElementById('label-ocr-language').innerText = c.ocr.language;
+                    document.getElementById('ocr-language-help').innerText = c.ocr.language_help;
+                    
+                    document.getElementById('label-ocr-fast-mode').innerText = c.ocr.fast_mode;
+                    document.getElementById('ocr-fast-mode-help').innerText = c.ocr.fast_mode_help;
+                    
+                    updateScreensaverButton();
+
+                    document.getElementById('label-maintenance').innerText = c.ocr.maintenance;
+                    document.getElementById('label-maintenance-help').innerText = c.ocr.maintenance_help;
+                    document.getElementById('batch-ocr-btn').innerText = c.ocr.maintenance_btn;
+                }
+
+                // AI Pane
+                if (c.ai) {
+                    document.getElementById('title-ai').innerText = c.ai.title;
+                    document.getElementById('label-chatgpt-api-key').innerText = c.ai.api_key;
+                    document.getElementById('label-chatgpt-help').innerText = c.ai.help;
+                }
+
+                // System Pane
+                if (c.system) {
+                    document.getElementById('title-system').innerText = c.system.title;
+                    document.getElementById('label-autostart').innerText = c.system.autostart;
+                    document.getElementById('label-autostart-help').innerText = c.system.autostart_help;
+                }
+
+                // General Pane
+                if (c.general) {
+                    document.getElementById('title-general').innerText = c.general.title;
+                    document.getElementById('label-language').innerText = c.general.language + ':';
+                    document.getElementById('label-default-mode').innerText = c.general.default_mode + ':';
+                    document.getElementById('label-start-view').innerText = c.general.start_view + ':';
+                    
+                    const startViewSelect = document.getElementById('start-view');
+                    startViewSelect.options[0].text = c.general.latest;
+                    startViewSelect.options[1].text = c.general.earliest;
+
+                    document.getElementById('label-test-notifications').innerText = c.general.test_notifications + ':';
+                    document.getElementById('label-test-notifications-help').innerText = c.general.test_notifications_help;
+                    document.getElementById('test-notification-btn').innerText = c.general.test_notifications_btn;
+                }
+
+                // Footer / Buttons
+                document.getElementById('save-btn').innerText = com.save || 'Save';
+                document.getElementById('cancel-btn').innerText = com.cancel || 'Cancel';
+
+                if (c.ocr) {
+                    if (c.ocr.screensaver_title) document.getElementById('label-screensaver-title').innerText = c.ocr.screensaver_title + ':';
+                    if (c.ocr.screensaver_help) document.getElementById('label-screensaver-help').innerText = c.ocr.screensaver_help;
+                    if (c.ocr.screensaver_timeout) document.getElementById('label-screensaver-timeout').innerText = c.ocr.screensaver_timeout;
+                    if (c.ocr.screensaver_require_password) document.getElementById('label-screensaver-require-password').innerText = c.ocr.screensaver_require_password;
+                    if (c.ocr.screensaver_test) document.getElementById('test-screensaver-btn').innerText = c.ocr.screensaver_test;
+                    if (c.ocr.win_energy_settings) document.getElementById('win-energy-settings-btn').innerText = c.ocr.win_energy_settings;
+                    if (c.ocr.win_screensaver_settings) document.getElementById('win-screensaver-settings-btn').innerText = c.ocr.win_screensaver_settings;
+                }
+
+                // Batch OCR Modal
+                if (c.batch_ocr) {
+                    document.getElementById('progress-title').innerText = c.batch_ocr.title;
+                    document.getElementById('abort-ocr-btn').innerText = c.batch_ocr.abort;
+                }
+            } catch (e) {
+                console.error("Error applying translations:", e);
+            }
+        }
+
+
+        function updateWindowChangeVisibility() {
+            windowChangeDelayGroup.style.display = windowChangeScreenshotInput.checked ? 'block' : 'none';
+        }
+
+        function updateDisplayChangeVisibility() {
+            displayChangeDelayGroup.style.display = displayChangeScreenshotInput.checked ? 'block' : 'none';
+        }
+
+        windowChangeScreenshotInput.onchange = updateWindowChangeVisibility;
+        displayChangeScreenshotInput.onchange = updateDisplayChangeVisibility;
+
+        function switchPane(paneId, sidebarItem) {
+            document.querySelectorAll('.config-pane').forEach(p => p.classList.remove('active'));
+            document.querySelectorAll('.sidebar-item').forEach(i => i.classList.remove('active'));
+            
+            document.getElementById(paneId).classList.add('active');
+            sidebarItem.classList.add('active');
+        }
+
+        function updateScreensaverButton() {
+            if (!translations.config || !translations.config.ocr) return;
+            const ocr = translations.config.ocr;
+            const timeoutContainer = document.getElementById('screensaver-timeout-container');
+            const secureContainer = document.getElementById('screensaver-secure-container');
+            const optionsContainer = document.getElementById('screensaver-options-container');
+            if (screensaverRegistered) {
+                toggleScreensaverBtn.innerText = ocr.screensaver_disable_btn || 'OCR Screen Saver deaktivieren';
+                toggleScreensaverBtn.className = 'btn btn-secondary';
+                if (timeoutContainer) timeoutContainer.style.display = 'none';
+                if (secureContainer) secureContainer.style.display = 'none';
+                if (optionsContainer) optionsContainer.style.display = 'none';
+            } else {
+                toggleScreensaverBtn.innerText = ocr.screensaver_enable_btn || 'OCR Screen Saver aktivieren';
+                toggleScreensaverBtn.className = 'btn btn-primary';
+                if (timeoutContainer) timeoutContainer.style.display = 'flex';
+                if (secureContainer) secureContainer.style.display = 'flex';
+                if (optionsContainer) optionsContainer.style.display = 'flex';
+            }
+        }
+
+        function toggleScreensaver() {
+            const newState = !screensaverRegistered;
+            ipcRenderer.send('update-screensaver-settings', {
+                enabled: newState,
+                timeoutSeconds: parseInt(screensaverTimeoutSelect.value),
+                requirePassword: screensaverRequirePasswordInput.checked
+            });
+        }
+
+
+        function openEnergySettings() {
+            ipcRenderer.send('open-windows-energy-settings');
+        }
+
+        function openScreensaverSettings() {
+            ipcRenderer.send('open-windows-screensaver-settings');
+        }
+
+        browseBtn.onclick = () => {
+            ipcRenderer.invoke('select-directory').then(result => {
+                if (result) {
+                    pathInput.value = result;
+                }
+            });
+        };
+
+        saveBtn.onclick = () => {
+            saveBtn.disabled = true;
+            ipcRenderer.send('save-config', { 
+                dir: pathInput.value,
+                interval: intervalInput.value,
+                onlyOnChanges: onlyOnChangesInput.checked,
+                ocrEnabled: ocrEnabledInput.checked,
+                ocrLanguage: ocrLanguageInput.value,
+                ocrFastMode: ocrFastModeInput.checked,
+                screenshotOnWindowChange: windowChangeScreenshotInput.checked,
+                windowChangeDelay: windowChangeDelayInput.value,
+                screenshotOnDisplayChange: displayChangeScreenshotInput.checked,
+                displayChangeDelay: displayChangeDelayInput.value,
+                screenshotFormat: screenshotFormatSelect.value,
+                skipOnPowerSave: skipOnPowerSaveInput.checked,
+                autostart: autostartEnabledInput.checked,
+                chatGptApiKey: chatGptApiKeyInput.value,
+                defaultMode: defaultModeSelect.value,
+                startView: startViewSelect.value,
+                language: languageSelect.value,
+                screensaverSystemEnabled: screensaverRegistered,
+                screensaverTimeout: parseInt(screensaverTimeoutSelect.value),
+                screensaverRequirePassword: screensaverRequirePasswordInput.checked
+            });
+            ipcRenderer.send('set-autostart', autostartEnabledInput.checked);
+        };
+
+        ipcRenderer.on('config-saved', (event, data) => {
+            if (data.success) {
+                window.close();
+            } else {
+                saveBtn.disabled = false;
+                alert('Fehler beim Speichern: ' + (data.error || 'Unbekannter Fehler'));
+            }
+        });
+
+        ipcRenderer.on('screensaver-settings-updated', (event, data) => {
+            const warningEl = document.getElementById('screensaver-warning');
+            if (data.success) {
+                console.log('Screensaver settings updated successfully');
+                if (data.enabled !== undefined) {
+                    screensaverRegistered = data.enabled;
+                } else {
+                    screensaverRegistered = !screensaverRegistered;
+                }
+                updateScreensaverButton();
+                
+                // Warnungen aus dem PowerShell-Skript anzeigen (z.B. Monitor-Timeout, Power Requests)
+                if (data.message && data.message.includes('WARNING:')) {
+                    const warnings = data.message.split('\n')
+                        .filter(line => line.includes('WARNING:'))
+                        .map(line => line.replace(/.*WARNING: /, '').trim());
+                    
+                    if (warnings.length > 0) {
+                        warningEl.innerHTML = warnings.join('<br>');
+                        warningEl.style.display = 'block';
+                    } else {
+                        warningEl.style.display = 'none';
+                    }
+                } else {
+                    warningEl.style.display = 'none';
+                }
+            } else {
+                alert('Fehler beim Aktualisieren der Bildschirmschoner-Einstellungen: ' + data.error);
+                warningEl.style.display = 'none';
+            }
+        });
+
+        cancelBtn.onclick = () => {
+            window.close();
+        };
+
+        // Batch OCR logic
+        batchOcrBtn.onclick = () => {
+            progressModal.style.display = 'flex';
+            progressBar.style.width = '0%';
+            progressPercent.innerText = '0%';
+            progressStatus.innerText = 'Initialisiere...';
+            ipcRenderer.send('start-batch-ocr');
+        };
+
+        testNotificationBtn.onclick = () => {
+            ipcRenderer.send('test-notification');
+        };
+
+        abortOcrBtn.onclick = () => {
+            ipcRenderer.send('abort-batch-ocr');
+            progressModal.style.display = 'none';
+        };
+
+        ipcRenderer.on('batch-ocr-progress', (event, data) => {
+            if (data.status) progressStatus.innerText = data.status;
+            if (data.percent !== undefined) {
+                progressBar.style.width = data.percent + '%';
+                progressPercent.innerText = Math.round(data.percent) + '%';
+            }
+            if (data.done) {
+                setTimeout(() => {
+                    progressModal.style.display = 'none';
+                    alert(data.message || 'Batch OCR erfolgreich abgeschlossen.');
+                }, 500);
+            }
+            if (data.error) {
+                progressModal.style.display = 'none';
+                alert('Fehler beim Batch OCR: ' + data.error);
+            }
+        });
+    </script>
+</body>
+</html>

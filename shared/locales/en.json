@@ -1,0 +1,216 @@
+{
+  "common": {
+    "ok": "OK",
+    "cancel": "Cancel",
+    "save": "Save",
+    "loading": "Loading...",
+    "error": "Error"
+  },
+  "viewer": {
+    "title": "Screen Recorder Viewer",
+    "loading_calendar": "Loading calendar...",
+    "tray_warning": "The background service (Tray) does not seem to be running. Screenshots are currently not being recorded.",
+    "no_captures": "No screenshots found for this day.",
+    "search_placeholder": "Search titles or OCR text...",
+    "tabs": {
+      "screenshot": "Screenshot",
+      "titles": "Titles",
+      "files": "Files",
+      "urls": "URLs",
+      "calls": "Calls",
+      "ocr": "OCR/Text",
+      "summary": "AI Summary"
+    },
+    "meta": {
+      "loading_meta": "Loading metadata...",
+      "loading_data": "Loading data...",
+      "loading_urls": "Loading URLs...",
+      "loading_ocr": "Loading OCR text...",
+      "no_ocr": "No OCR text available or feature disabled.",
+      "no_titles": "No window titles found in metadata",
+      "no_titles_list": "No title list available in metadata",
+      "no_files": "No open files captured",
+      "no_urls": "No browser URLs captured",
+      "no_calls": "No call information captured",
+      "not_found": "Metadata not found in database",
+      "no_more_data": "No further data",
+      "no_screenshot_at_time": "No screenshot available for this time.",
+      "col_time": "Time",
+      "col_window": "Window",
+      "col_url": "URL",
+      "col_title": "Window Title",
+      "col_file": "File Path",
+      "col_call": "Call"
+    },
+    "ai": {
+      "title": "AI Daily Summary",
+      "desc": "Analyze your activities of the day with artificial intelligence. You can either copy the generated prompt or request the analysis directly here.",
+      "status_loading": "Generating summary...",
+      "generate_btn": "Request AI Summary",
+      "tab_prompt": "Prompt",
+      "tab_result": "AI Result",
+      "prompt_title": "Prompt Preparation",
+      "prompt_desc": "This text is based on your activities and can be used as a prompt for ChatGPT.",
+      "result_title": "AI Analysis Result",
+      "result_placeholder": "No AI analysis performed or requested yet.",
+      "copy": "Copy",
+      "system_prompt": "You are a helpful assistant who summarizes IT activities for billing purposes. Answer in English. Use Markdown for structuring.",
+      "error_parse": "Error parsing API response.",
+      "error_api": "API Error: {message}",
+      "error_api_status": "API Error (Status {status})",
+      "error_network": "Network Error: {message}",
+      "error_no_key": "No ChatGPT API key found in settings."
+    },
+    "summary_parts": {
+      "title": "Activity Summary for {date}",
+      "prompt_intro": "Copy this text into ChatGPT with the following prompt:",
+      "prompt_text": "\"Analyze my activities based on window titles, file paths, URLs, and OCR texts. Group them by customer projects or topics. Provide an estimated total duration for each topic and create a list of completed tasks.\"",
+      "fokus": "Focus",
+      "window": "Window",
+      "url": "URL",
+      "file": "File",
+      "call": "Call",
+      "ocr": "Content (OCR)",
+      "until": "until",
+      "unknown": "Unknown",
+      "no_data": "No data found for this day."
+    },
+    "searching": {
+      "active": "Search in progress...",
+      "results": "{count} results found",
+      "error": "Error during search"
+    },
+    "migration": {
+      "scanning": "Scanning directories...",
+      "migrating": "Indexing data...",
+      "migrating_progress": "Indexing {current} of {total}",
+      "done": "Indexing complete. {count} items processed."
+    },
+    "calendar": {
+      "error": "Error loading calendar: {error}",
+      "no_data": "No data found.",
+      "days": {
+        "mo": "Mon",
+        "tu": "Tue",
+        "we": "Wed",
+        "th": "Thu",
+        "fr": "Fri",
+        "sa": "Sat",
+        "su": "Sun"
+      }
+    },
+    "modes": {
+      "fit": "Fit",
+      "grid": "Grid",
+      "list": "List",
+      "heat": "Heat"
+    },
+    "heatmap": {
+      "activity": "Activity"
+    },
+    "controls": {
+      "prev": "Previous",
+      "next": "Next",
+      "play": "Play",
+      "pause": "Pause"
+    },
+    "keyboard_info": "Arrow keys: navigation | Ctrl/Shift: +/- 10 screenshots"
+  },
+  "tray": {
+    "tooltip": "Screen Recorder",
+    "menu": {
+      "show_viewer": "Show Viewer",
+      "settings": "Settings",
+      "quit": "Quit",
+      "pause": "Pause Recording",
+      "resume": "Resume Recording"
+    },
+    "notifications": {
+      "started": "Recording started",
+      "paused": "Recording paused",
+      "resumed": "Recording resumed"
+    }
+  },
+  "config": {
+    "title": "Settings",
+    "general": {
+      "title": "General",
+      "language": "Language",
+      "default_mode": "Default Mode",
+      "start_view": "Start View",
+      "latest": "Latest Screenshot",
+      "earliest": "Earliest Screenshot",
+      "test_notifications": "Test Notifications",
+      "test_notifications_help": "Check if notifications are displayed correctly on this system.",
+      "test_notifications_btn": "Send Test Notification"
+    },
+    "storage": {
+      "title": "Storage",
+      "path": "Screenshot Path",
+      "browse": "Browse..."
+    },
+    "recording": {
+      "title": "Recording",
+      "interval": "Interval (seconds)",
+      "only_on_changes": "Save only if the image has changed",
+      "window_change": "Additional screenshot on window change",
+      "window_change_delay": "Delay after window change (seconds)",
+      "display_change": "Additional screenshot on monitor focus change",
+      "display_change_delay": "Delay after monitor change (seconds)",
+      "skip_on_powersave": "No screenshots during screensaver / standby",
+      "format": "Image Format (JPG or PNG)",
+      "shortcut": "Manual Screenshot Shortcut"
+    },
+    "ocr": {
+      "title": "OCR Settings",
+      "enabled": "Enable Text Recognition (OCR)",
+      "language": "OCR Language (e.g. deu, eng, deu+eng):",
+      "language_help": "Multiple languages can be separated with '+' (e.g. deu+eng).",
+      "fast_mode": "Fast Mode (less accurate, but saves resources)",
+      "fast_mode_help": "Scales images before recognition and disables dictionaries.",
+      "maintenance": "Maintenance:",
+      "maintenance_help": "Analyze all existing screenshots for which no OCR text has been extracted yet.",
+      "maintenance_btn": "Start Batch OCR",
+      "screensaver_title": "Windows Screensaver",
+      "screensaver_help": "Use the integrated screensaver to automatically perform text recognition (OCR) in the background.",
+      "screensaver_system_enable": "Register as Windows Screensaver",
+      "screensaver_enable_btn": "Enable OCR Screen Saver",
+      "screensaver_disable_btn": "Disable OCR Screen Saver",
+      "screensaver_timeout": "Activation after:",
+      "screensaver_require_password": "Require sign-in on resume",
+      "screensaver_test": "Test Screensaver",
+      "win_energy_settings_btn": "Windows Energy Settings",
+      "win_screensaver_settings_btn": "Windows Screensaver Settings"
+    },
+    "ai": {
+      "title": "AI Settings",
+      "api_key": "ChatGPT API Key (OpenAI):",
+      "help": "Required to generate automatic summaries in the viewer."
+    },
+    "system": {
+      "title": "System Settings",
+      "autostart": "Start tray app automatically with Windows",
+      "autostart_help": "Creates or removes a shortcut in the autostart folder."
+    },
+    "batch_ocr": {
+      "title": "Batch OCR Processing",
+      "status_init": "Initializing...",
+      "status_searching": "Searching files...",
+      "abort": "Abort",
+      "done": "Batch OCR completed successfully.",
+      "error": "Error during Batch OCR: {error}"
+    }
+  },
+  "screensaver": {
+    "todo": "Todo",
+    "done": "Done",
+    "documents": "images",
+    "active": "Screen Recorder Screensaver active",
+    "ocr_status": "{engine}: {processed} / {total} images",
+    "ocr_status_with_file": "{engine}: {processed} / {total} images - {file}",
+    "ocr_status_captures": "{engine}: {processedImages} / {totalImages} images",
+    "ocr_success": "OK",
+    "ocr_failed": "Failed",
+    "ocr_empty": "No text"
+  }
+}

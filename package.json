@@ -1,0 +1,76 @@
+{
+  "name": "screen-recorder",
+  "productName": "Screen Recorder",
+  "version": "1.0.64",
+  "description": "Bildschirmaufzeichnung mit Texterkennung und Bildschirmschoner",
+  "author": "Tim David Saxen",
+  "main": "viewer/main.js",
+  "scripts": {
+    "start": "electron .",
+    "start:viewer": "cd viewer && electron .",
+    "start:tray": "cd tray && electron .",
+    "start:screensaver": "cd screensaver && electron .",
+    "start:all": "start npm run start:viewer & start npm run start:tray",
+    "postinstall": "electron-rebuild -f -w better-sqlite3",
+    "version:bump": "node bump-version.js",
+    "build:installer": "npm run version:bump && cd install && npm install && npm run build",
+    "lint": "eslint . --ext .js"
+  },
+  "private": true,
+  "build": {
+    "appId": "com.screen.recorder",
+    "productName": "Screen Recorder",
+    "directories": {
+      "output": "dist",
+      "buildResources": "viewer/assets"
+    },
+    "files": [
+      "viewer/**/*",
+      "tray/**/*",
+      "screensaver/**/*",
+      "shared/**/*",
+      "package.json",
+      "!install/**/*",
+      "!web/**/*",
+      "!dist/**/*",
+      "!.git/**/*",
+      "!**/node_modules/*/{CHANGELOG.md,README.md,README,readme.md,readme}",
+      "!**/node_modules/*/{test,__tests__,tests,powered-test,example,examples}",
+      "!**/node_modules/*.d.ts",
+      "!**/node_modules/.bin"
+    ],
+    "win": {
+      "target": [
+        "nsis"
+      ],
+      "icon": "viewer/assets/icon.ico"
+    },
+    "asar": true,
+    "asarUnpack": [
+      "shared/*.ps1"
+    ],
+    "nsis": {
+      "oneClick": false,
+      "perMachine": true,
+      "include": "install/installer.nsh",
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Screen Recorder",
+      "installerLanguages": [
+        "en_US",
+        "de_DE"
+      ]
+    }
+  },
+  "devDependencies": {
+    "@electron/rebuild": "^4.0.4",
+    "electron": "^41.2.1"
+  },
+  "dependencies": {
+    "better-sqlite3": "^12.9.0",
+    "electron-store": "^10.0.0",
+    "screenshot-desktop": "^1.15.3",
+    "tesseract.js": "^7.0.0"
+  }
+}
