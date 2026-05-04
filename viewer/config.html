@@ -405,7 +405,7 @@
             onlyOnChangesInput.checked = data.onlyOnChanges || false;
             ocrEnabledInput.checked = data.ocrEnabled || false;
             
-            // Screensaver Status initial setzen
+            // Set initial screensaver status.
             ocrLanguageInput.value = data.ocrLanguage || 'deu+eng';
             ocrFastModeInput.checked = data.ocrFastMode || false;
             windowChangeScreenshotInput.checked = data.screenshotOnWindowChange || false;
@@ -650,7 +650,7 @@
                 }
                 updateScreensaverButton();
                 
-                // Warnungen aus dem PowerShell-Skript anzeigen (z.B. Monitor-Timeout, Power Requests)
+                // Show warnings from the PowerShell script (for example monitor timeout, power requests).
                 if (data.message && data.message.includes('WARNING:')) {
                     const warnings = data.message.split('\n')
                         .filter(line => line.includes('WARNING:'))

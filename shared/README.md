@@ -1,29 +1,29 @@
 # Screen Recorder - Shared
 
-Dieses Modul enthält die gemeinsame Logik und Datenhaltung, die sowohl vom **Tray-Recorder** als auch vom **Viewer** genutzt wird.
+This module contains the shared logic and data storage used by both the **tray recorder** and the **viewer**.
 
-## Komponenten
+## Components
 
-### 1. SQLite Datenbank (`db.js`)
-*   **Zweck**: Zentrale Speicherung aller Metadaten (Fenstertitel, URLs, Dateipfade, OCR-Texte).
-*   **Technik**: `better-sqlite3`.
+### 1. SQLite Database (`db.js`)
+*   **Purpose**: Central storage for all metadata (window titles, URLs, file paths, OCR texts).
+*   **Technology**: `better-sqlite3`.
 *   **Features**:
-    *   **Automatisierte Migrationen**: Ein versioniertes Patch-System sorgt dafür, dass die Datenbank-Struktur bei Updates automatisch aktualisiert wird.
-    *   **Volltextsuche**: Nutzt SQLite-Indizes, um Screenshots effizient nach Inhalten zu durchsuchen.
-    *   **Daten-Integrität**: Alle Schreibvorgänge des Recorders und Lesevorgänge des Viewers laufen über diese Schnittstelle.
+    *   **Automated migrations**: A versioned patch system keeps the database schema up to date automatically during updates.
+    *   **Full-text search**: Uses SQLite indexes to search screenshots efficiently by content.
+    *   **Data integrity**: All recorder writes and viewer reads go through this interface.
 
-### 2. Konfiguration (`config.js`)
-*   **Zweck**: Verwaltung der Benutzereinstellungen (Speicherpfade, Intervalle, API-Keys).
-*   **Technik**: `electron-store`.
-*   **Zentrale Einstellungen**:
-    *   `screenshotDir`: Wo Bilder liegen.
-    *   `ocrEnabled`: Einstellungen zur Texterkennung.
-    *   `chatGptApiKey`: API-Key für die KI-Analyse.
-*   **Wichtige Pfade**: Die Konfiguration und die Datenbank liegen Windows-konform in `%APPDATA%\screen-recorder-shared`.
+### 2. Configuration (`config.js`)
+*   **Purpose**: Manages user settings (storage paths, intervals, API keys).
+*   **Technology**: `electron-store`.
+*   **Central settings**:
+    *   `screenshotDir`: Where images are stored.
+    *   `ocrEnabled`: Text recognition settings.
+    *   `chatGptApiKey`: API key for AI analysis.
+*   **Important paths**: Configuration and database are stored in the Windows-compliant path `%APPDATA%\screen-recorder-shared`.
 
-## Datenhaltung
+## Data Storage
 
-Die Daten werden bewusst dezentral vom Programmcode, aber zentral für die Komponenten gespeichert:
+Data is deliberately stored separately from the program code, but centrally for all components:
 
-1.  **Screenshots**: Werden chronologisch in Ordnern (`YYYY-MM-DD`) abgelegt.
-2.  **Metadaten**: Die Datei `metadata.db` liegt zentral im AppData-Verzeichnis (`%APPDATA%\screen-recorder-shared`). Dies stellt sicher, dass Metadaten auch dann konsistent bleiben, wenn das Screenshot-Verzeichnis verschoben wird.
+1.  **Screenshots**: Stored chronologically in folders (`YYYY-MM-DD`).
+2.  **Metadata**: The `metadata.db` file is stored centrally in the AppData directory (`%APPDATA%\screen-recorder-shared`). This ensures metadata remains consistent even if the screenshot directory is moved.

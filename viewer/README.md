@@ -1,38 +1,38 @@
 # Screen Recorder - Viewer
 
-Der Viewer ist das Kontrollzentrum der Anwendung. Er dient zur Analyse der aufgezeichneten Daten, zur Suche in Screenshots und zur Konfiguration des Systems.
+The viewer is the application's control center. It is used to analyze recorded data, search screenshots, and configure the system.
 
-## Funktionen
+## Features
 
-*   **Visuelle Historie**: Durchsuchen der Screenshots aller Monitore mit Zeitleiste und Kalender-Navigation.
-*   **Volltextsuche**: Dank der OCR-Indizierung können Screenshots nach Textinhalten durchsucht werden.
-*   **KI-Tageszusammenfassung**: 
-    *   Generiert strukturierte Berichte über die Aktivitäten eines Tages.
-    *   Nutzt Fenstertitel, Dateipfade, URLs und OCR-Schnipsel für eine präzise Analyse.
-    *   Optimiert für die **Rechnungsstellung**: Zeigt Arbeitszeiten pro Projekt/Applikation an.
-    *   Eingebaute Markdown-Vorschau für übersichtliche Berichte.
-    *   "Copy for ChatGPT" Funktion für manuelle Analysen.
-*   **URL-Tracking-Ansicht**: Ein spezieller Tab listet alle besuchten Webseiten des Tages chronologisch auf.
-*   **Umfangreiche Konfiguration**:
-    *   **Allgemein**: Speicherpfad, Intervalle, Autostart.
-    *   **Ereignisse**: Screenshots bei Fenster- oder Monitorwechsel aktivieren/deaktivieren.
-    *   **OCR**: Aktivierung, Sprachwahl, Idle-Modus-Parameter und Steuerung des **integrierten Bildschirmschoners**.
-    *   **KI**: Hinterlegen des OpenAI API-Keys für die integrierte Analyse.
+*   **Visual history**: Browse screenshots from all monitors with a timeline and calendar navigation.
+*   **Full-text search**: OCR indexing makes screenshots searchable by text content.
+*   **AI daily summary**:
+    *   Generates structured reports about a day's activities.
+    *   Uses window titles, file paths, URLs, and OCR snippets for precise analysis.
+    *   Optimized for **invoicing**: Shows working time per project/application.
+    *   Built-in Markdown preview for readable reports.
+    *   "Copy for ChatGPT" function for manual analyses.
+*   **URL tracking view**: A dedicated tab lists all visited websites for the day in chronological order.
+*   **Extensive configuration**:
+    *   **General**: Storage path, intervals, autostart.
+    *   **Events**: Enable/disable screenshots on window or monitor changes.
+    *   **OCR**: Activation, language selection, idle-mode parameters, and control of the **integrated screensaver**.
+    *   **AI**: Store the OpenAI API key for the integrated analysis.
 
-## Technik
+## Technology
 
-*   **Frontend**: HTML5/CSS3 mit dynamischem Markdown-Rendering (Regex-basiert).
-*   **Backend**: Electron (Main-Prozess) für Dateisystemzugriff, IPC-Kommunikation und API-Anfragen.
-*   **Datenabfrage**: Nutzt die gemeinsame SQLite-Schnittstelle (`shared/db.js`) für performante Suchen und Metadaten-Aggregation.
-*   **API**: Integration der OpenAI API (`gpt-4o-mini`) via Electron `net` API.
+*   **Frontend**: HTML5/CSS3 with dynamic Markdown rendering (regex-based).
+*   **Backend**: Electron (main process) for file system access, IPC communication, and API requests.
+*   **Data access**: Uses the shared SQLite interface (`shared/db.js`) for fast searches and metadata aggregation.
+*   **API**: OpenAI API integration (`gpt-4o-mini`) via Electron's `net` API.
 
-## Starten
+## Starting
 
-Aus dem Hauptverzeichnis:
+From the repository root:
 ```bash
 npm run start:viewer
 ```
-Oder direkt aus diesem Verzeichnis:
+Or directly from this directory:
 ```bash
 npm start
 ```

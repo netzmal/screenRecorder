@@ -79,7 +79,7 @@ function createWindows() {
     const primaryDisplay = screen.getPrimaryDisplay();
     const loadPromises = [];
     
-    // Power Save Blocker aktivieren
+    // Enable the power save blocker.
     if (psbDisplayId === null) {
         psbDisplayId = powerSaveBlocker.start('prevent-display-sleep');
         console.log('Screensaver: PowerSaveBlocker started (prevent-display-sleep)');
@@ -115,7 +115,7 @@ function createWindows() {
             }
         });
 
-        // Wir laden immer die index.html, Ã¼bergeben aber fÃ¼r Nicht-PrimÃ¤re Bildschirme einen Parameter
+        // Always load index.html, but pass a parameter for non-primary displays.
         win.loadFile(path.join(__dirname, 'index.html'), {
             query: { black: isPrimary ? '0' : '1' }
         });
@@ -133,7 +133,7 @@ function createWindows() {
             win.show();
         });
         
-        // Beenden bei Interaktion (Tastatur)
+        // Exit on interaction (keyboard).
         win.webContents.on('before-input-event', (event, input) => {
             closeScreensaver();
         });
@@ -266,7 +266,7 @@ async function runOcrBackground() {
 
                 if (progress.results) {
                     Object.assign(ocrResults, progress.results);
-                    // "Nach"-Callback: Batch fertig, Ergebnisse auswerten
+                    // "After" callback: batch finished, evaluate results.
                     const elapsed = ((Date.now() - batchT) / 1000).toFixed(1);
                     batchNum++;
                     const ok    = Object.values(progress.results).filter(t => t && !isOcrErrorText(t) && t.trim() !== '').length;
@@ -277,11 +277,11 @@ async function runOcrBackground() {
 
                     saveCompletedCaptures();
                 } else {
-                    // "Vor"-Callback: Batch startet
+                    // "Before" callback: batch starts.
                     batchT = Date.now();
                 }
 
-                // Zwischenstand an Renderer senden
+                // Send intermediate status to the renderer.
                 mainWindows.forEach(win => {
                     if (!win.isDestroyed()) {
                         const lastPath = progress.paths && progress.paths.length > 0 ? path.normalize(progress.paths[progress.paths.length - 1]).toLowerCase() : null;
@@ -315,7 +315,7 @@ async function runOcrBackground() {
             });
             Object.assign(ocrResults, results);
 
-            // Nicht-existente Dateien als erledigt markieren
+            // Mark non-existent files as completed.
             const nonExistent = imagePaths.filter(p => !fs.existsSync(p));
             if (nonExistent.length > 0) {
                 ocrLog(`[INFO] ${nonExistent.length} fehlende Bilder als erledigt (leer) markiert`);
@@ -326,7 +326,7 @@ async function runOcrBackground() {
                 saveCompletedCaptures();
             }
 
-            // Tesseract Fallback nur fÃ¼r existierende Bilder mit Windows-OCR-Fehler
+            // Tesseract fallback only for existing images with Windows OCR errors.
             const failedPaths = imagePaths.filter(p => {
                 if (!fs.existsSync(p)) return false;
                 const key = path.normalize(p).toLowerCase();
@@ -449,12 +449,12 @@ app.whenReady().then(async () => {
             ocrLog(`[ERR]  resetOcrStatus: ${dbErr.message}`);
         }
 
-        // Mausbewegung erkennen (via IPC vom Renderer)
+        // Detect mouse movement (via IPC from the renderer).
         ipcMain.on('mouse-move', () => {
             closeScreensaver();
         });
 
-        // Statistiken und Bilder bereitstellen
+        // Provide statistics and images.
         ipcMain.handle('get-ocr-stats', () => {
             try {
                 const s = getOcrImageStats();
@@ -480,7 +480,7 @@ app.whenReady().then(async () => {
 
         await createWindows();
 
-        // OCR-Schleife starten (alle 30 Sekunden ein Batch)
+        // Start the OCR loop (one batch every 30 seconds).
         runOcrBackground();
         ocrTimer = setInterval(runOcrBackground, 30000);
     } catch (err) {

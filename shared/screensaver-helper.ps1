@@ -8,16 +8,16 @@
 # ------------------------------------------------------------
 # screensaver-helper.ps1
 #
-# Aktiviert oder deaktiviert den Windows-Bildschirmschoner für den
-# aktuellen Benutzer.
+# Enables or disables the Windows screensaver for the
+# current user.
 #
-# Wichtig:
-# Wenn Policy-Werte unter
+# Important:
+# If policy values are set under
 # HKCU:\Software\Policies\Microsoft\Windows\Control Panel\Desktop
-# gesetzt werden, muss dort auch SCRNSAVE.EXE gesetzt werden.
+# then SCRNSAVE.EXE must also be set there.
 #
-# Sonst kann Windows zwar Timeout/Aktivierung aus der Policy nehmen,
-# aber keinen konkreten Screensaver sauber automatisch starten.
+# Otherwise Windows can read timeout/activation from the policy,
+# but cannot reliably start a specific screensaver automatically.
 # ------------------------------------------------------------
 
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
@@ -31,13 +31,13 @@ if ([string]::IsNullOrWhiteSpace($exePath) -and $enable) {
 $registryPath = "HKCU:\Control Panel\Desktop"
 $policyPath   = "HKCU:\Software\Policies\Microsoft\Windows\Control Panel\Desktop"
 
-# Wenn true, werden die Screensaver-Werte auch als User-Policy gesetzt.
-# Das führt dazu, dass z. B. die Wartezeit im Windows-Dialog ausgegraut ist.
-# Dafür übernimmt Windows die Werte zuverlässiger.
+# When true, the screensaver values are also set as a user policy.
+# This causes values such as the wait time to be grayed out in the Windows dialog.
+# In exchange, Windows applies the values more reliably.
 $setPolicyValues = $true
 
 # ------------------------------------------------------------
-# Hilfsfunktion: Registry-Key sicher erstellen
+# Helper function: safely create a registry key.
 # ------------------------------------------------------------
 
 function Ensure-RegistryKey {
@@ -51,7 +51,7 @@ function Ensure-RegistryKey {
 }
 
 # ------------------------------------------------------------
-# Hilfsfunktion: Wert setzen
+# Helper function: set a value.
 # ------------------------------------------------------------
 
 function Set-RegString {
@@ -66,7 +66,7 @@ function Set-RegString {
 }
 
 # ------------------------------------------------------------
-# Hilfsfunktion: Prüfen, ob wir im EXE-Verzeichnis schreiben dürfen
+# Helper function: check whether we can write to the EXE directory.
 # ------------------------------------------------------------
 
 function Test-DirectoryWritable {
@@ -85,7 +85,7 @@ function Test-DirectoryWritable {
 }
 
 # ------------------------------------------------------------
-# Hilfsfunktion: Monitor-Timeout aus powercfg grob prüfen
+# Helper function: roughly check monitor timeout through powercfg.
 # ------------------------------------------------------------
 
 function Test-MonitorTimeout {
@@ -97,10 +97,10 @@ function Test-MonitorTimeout {
         $powerQuery = powercfg /query SCHEME_CURRENT SUB_VIDEO VIDEOIDLE 2>&1
         $text = $powerQuery -join "`n"
 
-        # Funktioniert für deutsche und englische Ausgabe, weil wir den Hex-Wert suchen.
-        # In der Ausgabe gibt es typischerweise:
-        # Index der aktuellen Wechselstromeinstellung: 0x00000000
-        # oder:
+        # Works for German and English output because we search for the hex value.
+        # The output typically contains:
+        # Current AC power setting index: 0x00000000
+        # or:
         # Current AC Power Setting Index: 0x00000000
 
         $acValue = $null
@@ -131,7 +131,7 @@ function Test-MonitorTimeout {
 }
 
 # ------------------------------------------------------------
-# Hilfsfunktion: powercfg /requests prüfen
+# Helper function: check powercfg /requests.
 # ------------------------------------------------------------
 
 function Test-PowerRequests {
@@ -178,7 +178,7 @@ function Test-PowerRequests {
 }
 
 # ------------------------------------------------------------
-# Aktivieren
+# Enable.
 # ------------------------------------------------------------
 
 if ($enable) {
@@ -199,12 +199,12 @@ if ($enable) {
         Write-Host "Directory $exeDir is not writable."
     }
 
-    # Falls eine .exe übergeben wurde, erzeugen wir daraus eine .scr.
-    # Windows erwartet für Bildschirmschoner klassisch eine .scr-Datei.
+    # If an .exe was provided, create a .scr from it.
+    # Windows traditionally expects a .scr file for screensavers.
     if ($targetPath -like "*.exe") {
         $done = $false
 
-        # 1. Versuch: .scr als Hardlink oder Kopie im EXE-Verzeichnis erzeugen.
+        # 1. Attempt: create the .scr as a hard link or copy in the EXE directory.
         if ($canWriteInExeDir) {
             try {
                 if (Test-Path $scrPath) {
@@ -227,7 +227,7 @@ if ($enable) {
             }
         }
 
-        # 2. Fallback: .scr nach AppData kopieren.
+        # 2. Fallback: copy the .scr to AppData.
         if (-not $done) {
             Write-Host "Using AppData fallback for .scr file."
 
@@ -262,7 +262,7 @@ if ($enable) {
     $secureValue = if ($secure) { "1" } else { "0" }
 
     # ------------------------------------------------------------
-    # Normale User-Werte setzen
+    # Set normal user values.
     # ------------------------------------------------------------
 
     Set-RegString -Path $registryPath -Name "SCRNSAVE.EXE" -Value $cleanPath
@@ -271,13 +271,13 @@ if ($enable) {
     Set-RegString -Path $registryPath -Name "ScreenSaverIsSecure" -Value $secureValue
 
     # ------------------------------------------------------------
-    # Policy-Werte setzen
+    # Set policy values.
     #
-    # Wichtig:
-    # Wenn Active/Timeout/Secure in der Policy gesetzt werden,
-    # muss SCRNSAVE.EXE ebenfalls in der Policy stehen.
-    # Sonst kann Windows den Dialog sperren, aber ohne sauberen
-    # Screensaver-Pfad arbeiten.
+    # Important:
+    # If Active/Timeout/Secure are set in the policy,
+    # SCRNSAVE.EXE must also be present in the policy.
+    # Otherwise Windows can lock the dialog but still work
+    # without a clean screensaver path.
     # ------------------------------------------------------------
 
     if ($setPolicyValues) {
@@ -299,7 +299,7 @@ if ($enable) {
     }
 
     # ------------------------------------------------------------
-    # Windows über geänderte Einstellungen informieren
+    # Notify Windows about changed settings.
     # ------------------------------------------------------------
 
     Add-Type -TypeDefinition @"
@@ -317,14 +317,14 @@ public class Win32 {
     # SPIF_UPDATEINIFILE       = 0x01
     # SPIF_SENDCHANGE          = 0x02
     #
-    # Kurz deaktivieren und wieder aktivieren, damit Windows die Änderung übernimmt.
+    # Briefly disable and re-enable so Windows applies the change.
 
     [Win32]::SystemParametersInfo(0x0011, 0, [IntPtr]::Zero, 3) | Out-Null
     [Win32]::SystemParametersInfo(0x000F, [uint32]$timeoutSeconds, [IntPtr]::Zero, 3) | Out-Null
     [Win32]::SystemParametersInfo(0x0011, 1, [IntPtr]::Zero, 3) | Out-Null
 
     # ------------------------------------------------------------
-    # Hinweise und Prüfungen
+    # Notes and checks.
     # ------------------------------------------------------------
 
     Test-MonitorTimeout -ScreensaverTimeoutSeconds $timeoutSeconds
@@ -361,7 +361,7 @@ public class Win32 {
 }
 
 # ------------------------------------------------------------
-# Deaktivieren
+# Disable.
 # ------------------------------------------------------------
 
 else {
@@ -370,7 +370,7 @@ else {
     if (Test-Path $policyPath) {
         Set-ItemProperty -Path $policyPath -Name "ScreenSaveActive" -Value "0" -Type String -ErrorAction SilentlyContinue
 
-        # Beim Deaktivieren entfernen wir den Policy-Pfad ebenfalls.
+        # When disabling, also remove the policy path.
         Remove-ItemProperty -Path $policyPath -Name "SCRNSAVE.EXE" -ErrorAction SilentlyContinue
     }
 

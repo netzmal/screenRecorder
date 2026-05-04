@@ -11,15 +11,15 @@ const { saveCapture, saveCapturesBatch, initDb, getAllCaptures, deleteCapture, g
 const i18n = require('../shared/i18n');
 const { runWindowsOcrBatch } = require('../shared/ocr-helper');
 
-// i18n initialisieren
+// Initialize i18n.
 const configLanguage = getLanguage();
 i18n.init(configLanguage === 'auto' ? null : configLanguage);
 
-// Sicherstellen, dass Batch OCR Status zurückgesetzt ist
+// Ensure the batch OCR status is reset.
 setIsBatchOcrRunning(false);
 setIsScreensaverRunning(false);
 
-// Logging-Funktion für Debugging
+// Logging function for debugging.
 function logDebug(message) {
     try {
         const logDir = path.join(getConfigDir(), 'logs');
@@ -31,7 +31,7 @@ function logDebug(message) {
     console.log(message);
 }
 
-// AppUserModelId setzen für Benachrichtigungen unter Windows
+// Set AppUserModelId for notifications on Windows.
 if (process.platform === 'win32') {
     app.setAppUserModelId('com.screen.recorder');
 }
@@ -63,11 +63,11 @@ async function getOcrWorker() {
     logDebug('Initializing Tesseract worker...');
     ocrWorker = await Tesseract.createWorker(getOcrLanguage() || 'deu+eng');
     
-    // Geschwindigkeits- und Qualitäts-Optimierungen
+    // Speed and quality optimizations.
     const fastMode = getOcrFastMode();
     const parameters = {
         tessedit_pageseg_mode: 3, // AUTO
-        // Verhindert das Erkennen von extrem kleinen/unwahrscheinlichen Zeichenfolgen
+        // Prevent recognition of extremely small/unlikely character sequences.
         tessedit_char_whitelist: '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZäöüÄÖÜß.,:;!?()[]{}@/\\- '
     };
 
@@ -131,8 +131,8 @@ function isPowerSaving() {
             $isScreenSaverRunning = Get-Process | Where-Object { $_.ProcessName -like "*scrnsave*" -or $_.MainWindowTitle -like "*screensaver*" }
             if ($isScreenSaverRunning) { return $true }
 
-            # Prüfen ob der Monitor im Standby ist (via WMI/Cim)
-            # Eine einfache Methode unter Windows ist zu prüfen, ob der Monitor-Status "Power Off" ist
+            # Check whether the monitor is in standby (via WMI/CIM).
+            # A simple method on Windows is to check whether the monitor status is "Power Off".
             try {
                 $monitors = Get-CimInstance -Namespace root\\wmi -ClassName WmiMonitorBasicDisplayParams
                 $allOff = $true
@@ -194,9 +194,9 @@ function getIdleTime() {
     });
 }
 
-// Maintenance für die Datenbank laufen lassen (verwaiste Einträge löschen)
+// Run database maintenance (delete orphaned entries).
 async function runDatabaseMaintenance() {
-    // Wenn User aktiv ist, verschieben wir die Maintenance
+    // If the user is active, postpone maintenance.
     const idleTimeMs = await getIdleTime();
     if (idleTimeMs < 5000) return;
 
@@ -209,7 +209,7 @@ async function runDatabaseMaintenance() {
             let stillExists = false;
             const files = capture.files;
             
-            // capture.files ist ein Array von Pfaden (oder ein Objekt bei älteren Versionen)
+            // capture.files is an array of paths (or an object in older versions).
             const fileList = Array.isArray(files) ? files : Object.values(files);
 
             for (const filePath of fileList) {
@@ -235,7 +235,7 @@ async function runDatabaseMaintenance() {
 
 function getMetaData(includeFull = true, includeMonitors = true) {
     return new Promise((resolve) => {
-        // Robusterer PowerShell-Befehl
+        // More robust PowerShell command.
         const script = `
             $ProgressPreference = 'SilentlyContinue'
             [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
@@ -252,7 +252,7 @@ function getMetaData(includeFull = true, includeMonitors = true) {
             $includeFull = ${includeFull ? '$true' : '$false'}
             $includeMonitors = ${includeMonitors ? '$true' : '$false'}
 
-            # Aktives Fenster ermitteln (immer nötig für Monitoring)
+            # Determine the active window (always needed for monitoring).
             $code = @'
                 using System;
                 using System.Runtime.InteropServices;
@@ -287,7 +287,7 @@ function getMetaData(includeFull = true, includeMonitors = true) {
             } catch {}
 
             if ($includeFull) {
-                # Browser URLs ermitteln (Chrome & Edge) via UIAutomation
+                # Determine browser URLs (Chrome & Edge) via UIAutomation.
                 try {
                     if ($null -eq [System.Windows.Automation.AutomationElement]) {
                         Add-Type -AssemblyName UIAutomationClient -ErrorAction SilentlyContinue
@@ -303,14 +303,14 @@ function getMetaData(includeFull = true, includeMonitors = true) {
                                 try {
                                     $root = [System.Windows.Automation.AutomationElement]::FromHandle($proc.MainWindowHandle)
                                     
-                                    # 1. Versuche über AutomationId (Chromium & Firefox Standards)
+                                    # 1. Try AutomationId (Chromium & Firefox standards).
                                     $idCondition = [System.Windows.Automation.OrCondition]::New(
                                         [System.Windows.Automation.PropertyCondition]::New([System.Windows.Automation.AutomationElement]::AutomationIdProperty, "address-edit-box"),
                                         [System.Windows.Automation.PropertyCondition]::New([System.Windows.Automation.AutomationElement]::AutomationIdProperty, "urlbar")
                                     )
                                     $editElement = $root.FindFirst([System.Windows.Automation.TreeScope]::Descendants, $idCondition)
                                     
-                                    # 2. Fallback: Suche nach Edit Controls mit Namen (lokalisiert)
+                                    # 2. Fallback: search for named edit controls (localized).
                                     if (-not $editElement) {
                                         $names = @("Address and search bar", "Adress- und Suchleiste", "Address edit box", "Search or enter web address", "URL-Leiste", "Adressleiste")
                                         foreach ($name in $names) {
@@ -323,7 +323,7 @@ function getMetaData(includeFull = true, includeMonitors = true) {
                                         }
                                     }
 
-                                    # 3. Fallback: Suche einfach nach dem ersten Edit Control
+                                    # 3. Fallback: simply search for the first edit control.
                                     if (-not $editElement) {
                                         $editCondition = [System.Windows.Automation.PropertyCondition]::New(
                                             [System.Windows.Automation.AutomationElement]::ControlTypeProperty, 
@@ -340,7 +340,7 @@ function getMetaData(includeFull = true, includeMonitors = true) {
                                         } catch {
                                             $val = $editElement.Current.Name
                                         }
-                                        # Einfache Heuristik: Muss Punkt, Slash oder Doppelpunkt enthalten und kein reiner Platzhalter sein
+                                        # Simple heuristic: must contain a dot, slash, or colon and must not be a pure placeholder.
                                         if ($val -and $val.Length -gt 3 -and $val -match "(\.|/|:)") {
                                             $urls += $val
                                         }
@@ -358,7 +358,7 @@ function getMetaData(includeFull = true, includeMonitors = true) {
                     $firefoxUrls = Get-BrowserUrls "firefox"
                     if ($firefoxUrls) { $output.urls += $firefoxUrls }
 
-                    # Textextraktion aus dem aktiven Fenster via UIAutomation (DOM-artig)
+                    # Text extraction from the active window via UIAutomation (DOM-like).
                     if ($hwnd -ne 0) {
                         try {
                             $activeRoot = [System.Windows.Automation.AutomationElement]::FromHandle($hwnd)
@@ -386,12 +386,12 @@ function getMetaData(includeFull = true, includeMonitors = true) {
                     }
                 } catch {}
 
-                # Alle Fenstertitel
+                # All window titles.
                 try {
                     Get-Process | Where-Object { $_.MainWindowTitle } | ForEach-Object { $output.titles += $_.MainWindowTitle };
                 } catch {}
                 
-                # Offene Dateien im Explorer
+                # Open files in Explorer.
                 try {
                     $exp = New-Object -ComObject Shell.Application;
                     $exp.Windows() | ForEach-Object {
@@ -405,21 +405,21 @@ function getMetaData(includeFull = true, includeMonitors = true) {
                     }
                 } catch {};
 
-                # Anrufe erkennen (3CX & Windows Phone API)
+                # Detect calls (3CX & Windows Phone API).
                 try {
-                    # 1. 3CX spezifische Erkennung via Fenstertitel (auch wenn nicht im Fokus)
+                    # 1. 3CX-specific detection via window title (even when not focused).
                     $3cxProcs = Get-Process | Where-Object { ($_.ProcessName -match "3CX") -and $_.MainWindowTitle }
                     foreach ($p in $3cxProcs) {
                         $title = $p.MainWindowTitle
-                        # Typische Muster für aktive Anrufe in 3CX
+                        # Typical patterns for active calls in 3CX.
                         if ($title -match "Call with|Anruf mit|Calling|Wählt|Ringe|Ringing|Talking|Sprechen|On Call") {
                             $output.calls += "3CX: $title"
                         }
                     }
                     
-                    # 2. Windows Phone API (WinRT) Check via Shell (nur wenn includeFull)
+                    # 2. Windows Phone API (WinRT) check via shell (only when includeFull).
                     if ($includeFull) {
-                        # Wir suchen nach Prozessen die den 'Phone' oder 'Call' Namen tragen und aktiv sind
+                        # Search for active processes whose names contain 'Phone' or 'Call'.
                         $callProcs = Get-Process | Where-Object { ($_.ProcessName -match "Phone|Call") -and ($_.ProcessName -notmatch "Chrome|Edge|Explorer|3CX") -and $_.MainWindowTitle }
                         foreach ($p in $callProcs) {
                             $output.calls += "$($p.ProcessName): $($p.MainWindowTitle)"
@@ -428,7 +428,7 @@ function getMetaData(includeFull = true, includeMonitors = true) {
                 } catch {}
             }
 
-            # Monitore ermitteln (nur wenn angefordert)
+            # Determine monitors (only when requested).
             if ($includeMonitors) {
                 try {
                     Add-Type -AssemblyName System.Windows.Forms
@@ -451,7 +451,7 @@ function getMetaData(includeFull = true, includeMonitors = true) {
         const tempScriptPath = path.join(os.tmpdir(), `sr-metadata-${Date.now()}-${Math.random().toString(36).substring(7)}.ps1`);
         
         try {
-            // Skript mit UTF-8 BOM speichern, damit PowerShell Umlaute korrekt erkennt
+            // Save the script with a UTF-8 BOM so PowerShell recognizes umlauts correctly.
             fs.writeFileSync(tempScriptPath, '\ufeff' + script, 'utf8');
         } catch (err) {
             logDebug(`Failed to write temp script: ${err.message}`);
@@ -468,7 +468,7 @@ function getMetaData(includeFull = true, includeMonitors = true) {
 
         psProcess.stderr.on('data', (data) => {
             const errorMsg = data.toString();
-            // Ignoriere typische PowerShell-Initialisierungsmeldungen oder CLIXML-Header
+            // Ignore typical PowerShell initialization messages or CLIXML headers.
             if (errorMsg.includes('<Objs') || errorMsg.includes('#< CLIXML') || errorMsg.includes('Module werden vorbereitet')) {
                 return;
             }
@@ -476,7 +476,7 @@ function getMetaData(includeFull = true, includeMonitors = true) {
         });
 
         psProcess.on('close', (code) => {
-            // Temp-Datei löschen
+            // Delete temp file.
             try {
                 if (fs.existsSync(tempScriptPath)) fs.unlinkSync(tempScriptPath);
             } catch (e) {
@@ -498,12 +498,12 @@ function getMetaData(includeFull = true, includeMonitors = true) {
                 const activeWindowRect = data.activeWindowRect;
                 const monitors = Array.isArray(data.monitors) ? data.monitors : (data.monitors ? [data.monitors] : []);
                 
-                // Debug-Log für Metadaten
+                // Debug log for metadata.
                 if (urls.length > 0 || calls.length > 0) {
                     logDebug(`Metadaten erfasst - URLs: ${urls.length}, Calls: ${calls.length}`);
                 }
                 
-        // Eindeutige Werte und leere Einträge filtern
+        // Filter unique values and empty entries.
         const result = { 
             activeWindow: activeWindow,
             activeWindowRect: activeWindowRect,
@@ -517,7 +517,7 @@ function getMetaData(includeFull = true, includeMonitors = true) {
         if (includeFull) {
             logDebug(`getMetaData - titles: ${result.titles.length}, files: ${result.files.length}, urls: ${result.urls.length}, calls: ${result.calls.length}`);
             
-            // Debugging: Liste der ersten 3 Titel loggen
+            // Debugging: log the first 3 titles.
             if (result.titles.length > 0) {
                 logDebug(`Erste 3 Titel: ${result.titles.slice(0, 3).join(', ')}`);
             } else {
@@ -535,19 +535,19 @@ function getMetaData(includeFull = true, includeMonitors = true) {
 }
 
 function updateTrayStatus() {
-    // Hier können zukünftige Status-Aktualisierungen rein (z.B. Icons blinken bei Aufnahme)
+    // Future status updates can go here (for example blinking icons during recording).
 }
 
 
 function openViewer() {
     if (app.isPackaged) {
-        // In der installierten App nutzen wir den eigenen Executable-Pfad ohne Argumente
+        // In the installed app, use our own executable path without arguments.
         spawn(process.execPath, [], {
             detached: true,
             stdio: 'ignore'
         }).unref();
     } else {
-        // Im Entwicklungsmodus nutzen wir electron aus den node_modules
+        // In development mode, use Electron from node_modules.
         const path = require('path');
         const viewerPath = path.join(__dirname, '..', 'viewer');
         const electronPath = require('electron');
@@ -560,13 +560,13 @@ function openViewer() {
 
 function startScreensaver() {
     if (app.isPackaged) {
-        // In der installierten App nutzen wir den eigenen Executable-Pfad mit "screensaver" Argument
+        // In the installed app, use our own executable path with the "screensaver" argument.
         spawn(process.execPath, ['screensaver'], {
             detached: true,
             stdio: 'ignore'
         }).unref();
     } else {
-        // Im Entwicklungsmodus nutzen wir electron aus den node_modules
+        // In development mode, use Electron from node_modules.
         const path = require('path');
         const screensaverPath = path.join(__dirname, '..', 'screensaver');
         const electronPath = require('electron');
@@ -586,7 +586,7 @@ function setupTray() {
 
     let icon;
     if (fs.existsSync(iconPath)) {
-        // Unter Windows für den Tray bevorzugt nativeImage aus ICO laden
+        // On Windows, prefer loading nativeImage from ICO for the tray.
         icon = nativeImage.createFromPath(iconPath);
         if (icon.isEmpty()) {
             console.error('Tray icon failed to load from:', iconPath);
@@ -612,17 +612,17 @@ function setupTray() {
     tray.setToolTip(`${i18n.t('tray.tooltip')} v${app.getVersion()}`);
     tray.setContextMenu(contextMenu);
 
-    // DB initialisieren
+    // Initialize DB.
     initDb();
     
-    // Store events überwachen
+    // Watch store events.
     if (store && typeof store.onDidChange === 'function') {
         store.onDidChange('ocrEnabled', (newValue) => {
             logDebug(`Config changed: ocrEnabled = ${newValue}`);
-            // Tooltip sofort aktualisieren
+            // Update tooltip immediately.
             updateTrayStatus();
         });
-        // Auch auf andere relevante Änderungen reagieren
+        // Also respond to other relevant changes.
         store.onDidChange('interval', (newValue) => {
             logDebug(`Config changed: interval = ${newValue}`);
             updateTrayStatus();
@@ -667,13 +667,13 @@ async function performOCR(imagePaths) {
                 try {
                     let imageInput = imagePaths[i];
                     
-                    // Bildskalierung für mehr Geschwindigkeit im Fast Mode
+                    // Image scaling for better speed in fast mode.
                     if (fastMode) {
                         try {
                             const originalImage = nativeImage.createFromPath(imagePaths[i]);
                             if (!originalImage.isEmpty()) {
                                 const size = originalImage.getSize();
-                                // Auf 50% skalieren
+                                // Scale to 50%.
                                 const resizedImage = originalImage.resize({
                                     width: Math.round(size.width * 0.5),
                                     height: Math.round(size.height * 0.5),
@@ -697,13 +697,13 @@ async function performOCR(imagePaths) {
             }
         }
     } finally {
-        // Aufräumarbeiten falls nötig
+        // Cleanup if needed.
     }
     return combinedText;
 }
 
 /**
- * Filtert OCR Text um Rauschen zu reduzieren.
+ * Filters OCR text to reduce noise.
  * @param {string} text 
  * @returns {string}
  */
@@ -711,14 +711,14 @@ function filterOcrText(text) {
     if (!text) return "";
     const lines = text.split('\n');
     const filteredLines = lines.map(line => {
-        // Wörter filtern: Behalte nur Wörter mit mindestens 2 Zeichen oder sinnvolle Einzelzeichen
+        // Filter words: keep only words with at least 2 characters or meaningful single characters.
         const words = line.split(/\s+/);
         const filteredWords = words.filter(word => {
-            // Sonderzeichen-Strings filtern (z.B. "!!!", "---")
+            // Filter special-character strings (for example "!!!", "---").
             if (/^[^a-zA-Z0-9äöüÄÖÜß]{2,}$/.test(word)) return false;
-            // Einzelne Sonderzeichen filtern
+            // Filter single special characters.
             if (word.length === 1 && !/[a-zA-Z0-9äöüÄÖÜß]/.test(word)) return false;
-            // Einzelne Zahlen behalten wir meist, aber einzelne Buchstaben nur wenn sie im Kontext stehen?
+            // Usually keep single numbers, but single letters only when they have context.
             if (word.length < 2 && !/[0-9]/.test(word)) return false;
             return true;
         });
@@ -748,18 +748,18 @@ async function takeScreenshots(onNewScreenshots) {
         return;
     }
 
-    // Bestehenden Timeout löschen, falls vorhanden (wichtig bei manuellem/event Trigger)
+    // Clear existing timeout if present (important for manual/event triggers).
     if (recordingTimeout) clearTimeout(recordingTimeout);
 
     if (await isPowerSaving()) {
         console.log('Skipping screenshot because power saving mode is active (ScreenSaver/Monitor Off).');
-        // Verschiebe die Zeit für den nächsten regulären Screenshot trotzdem, 
-        // damit wir nicht sofort wieder hier landen
+        // Still move the time for the next regular screenshot
+        // so we do not immediately end up here again.
         const intervalSeconds = getInterval();
         nextScreenshotTime = Date.now() + intervalSeconds * 1000;
         updateTrayStatus();
         
-        // Timer für den nächsten Versuch planen
+        // Schedule timer for the next attempt.
         scheduleNextScreenshot();
         return;
     }
@@ -768,7 +768,7 @@ async function takeScreenshots(onNewScreenshots) {
     const onlyOnChanges = getOnlyOnChanges();
     const intervalSeconds = getInterval();
     
-    // Setze die Zeit für den nächsten Screenshot
+    // Set the time for the next screenshot.
     nextScreenshotTime = Date.now() + intervalSeconds * 1000;
     updateTrayStatus();
 
@@ -792,7 +792,7 @@ async function takeScreenshots(onNewScreenshots) {
         const displayHashes = [];
         let anyNew = false;
 
-        // Zuerst alle Buffer und Hashes holen
+        // First get all buffers and hashes.
         for (let i = 0; i < displays.length; i++) {
             const buffer = await screenshot({ screen: displays[i].id, format: format });
             const currentHash = crypto.createHash('md5').update(buffer).digest('hex');
@@ -825,7 +825,7 @@ async function takeScreenshots(onNewScreenshots) {
             const meta = await getMetaData(true);
             logDebug(`Metadaten erfasst: ${meta.titles.length} Titel, ${meta.files.length} Dateien, ${meta.urls.length} URLs, ${meta.calls.length} Anrufe`);
             
-            // In DB speichern
+            // Save to DB.
             saveCapture({
                 date: `${year}-${month}-${day}`,
                 time: `${timeStr}-${secondsStr}`,
@@ -849,7 +849,7 @@ async function takeScreenshots(onNewScreenshots) {
     } catch (err) {
         console.error('Screenshot failed', err);
     } finally {
-        // Egal ob Erfolg oder Fehler, den nächsten Screenshot planen
+        // Schedule the next screenshot regardless of success or failure.
         scheduleNextScreenshot();
     }
 }
@@ -872,10 +872,10 @@ function startRecording(onNewScreenshots) {
     
     if (onNewScreenshots) currentOnNewScreenshots = onNewScreenshots;
     
-    // Datenbank Maintenance alle 15 Minuten prüfen
+    // Check database maintenance every 15 minutes.
     idleCheckInterval = setInterval(runDatabaseMaintenance, 15 * 60 * 1000);
     
-    // Fensterwechsel-Überwachung alle 2 Sekunden
+    // Monitor window changes every 2 seconds.
     windowMonitorInterval = setInterval(async () => {
         const checkWindowChange = getScreenshotOnWindowChange();
         const checkDisplayChange = getScreenshotOnDisplayChange();
@@ -883,16 +883,16 @@ function startRecording(onNewScreenshots) {
         if (!checkWindowChange && !checkDisplayChange) return;
         
         try {
-            // Nur minimal Metadaten für das Monitoring abrufen
-            // Monitordaten nur wenn checkDisplayChange aktiv ist
+            // Fetch only minimal metadata for monitoring.
+            // Fetch monitor data only when checkDisplayChange is active.
             const meta = await getMetaData(false, checkDisplayChange);
             
-            // 1. Fensterwechsel prüfen
+            // 1. Check window changes.
             if (checkWindowChange && meta.activeWindow && meta.activeWindow !== lastActiveWindowTitle) {
                 console.log(`Window changed: ${lastActiveWindowTitle} -> ${meta.activeWindow}`);
                 lastActiveWindowTitle = meta.activeWindow;
                 
-                // Screenshot verzögert auslösen
+                // Trigger screenshot after a delay.
                 if (windowChangeTimeout) clearTimeout(windowChangeTimeout);
                 
                 const delay = getWindowChangeDelay();
@@ -902,13 +902,13 @@ function startRecording(onNewScreenshots) {
                 }, delay * 1000);
             }
 
-            // 2. Monitorwechsel prüfen (Monitor des aktiven Fensters)
+            // 2. Check monitor changes (monitor of the active window).
             if (checkDisplayChange && meta.activeWindowRect && meta.monitors && meta.monitors.length > 0) {
-                // Mitte des Fensters berechnen
+                // Calculate the center of the window.
                 const centerX = meta.activeWindowRect.Left + (meta.activeWindowRect.Right - meta.activeWindowRect.Left) / 2;
                 const centerY = meta.activeWindowRect.Top + (meta.activeWindowRect.Bottom - meta.activeWindowRect.Top) / 2;
                 
-                // Finden, auf welchem Monitor sich die Mitte befindet
+                // Find which monitor contains the center.
                 let currentDisplayId = null;
                 for (const m of meta.monitors) {
                     const b = m.Bounds;
@@ -925,7 +925,7 @@ function startRecording(onNewScreenshots) {
                     lastActiveDisplayId = currentDisplayId;
                     
                     if (!isFirstCheck) {
-                        // Screenshot verzögert auslösen
+                        // Trigger screenshot after a delay.
                         if (displayChangeTimeout) clearTimeout(displayChangeTimeout);
                         
                         const delay = getDisplayChangeDelay();
@@ -946,7 +946,7 @@ function startRecording(onNewScreenshots) {
 
 // Watch for config changes
 store.onDidAnyChange((newValue, oldValue) => {
-    // Wenn sich wichtige Parameter geändert haben, Timer neu starten
+    // Restart timer when important parameters changed.
     if (newValue.interval !== oldValue.interval || 
         newValue.screenshotOnWindowChange !== oldValue.screenshotOnWindowChange ||
         newValue.screenshotOnDisplayChange !== oldValue.screenshotOnDisplayChange) {
@@ -954,7 +954,7 @@ store.onDidAnyChange((newValue, oldValue) => {
     }
 });
 
-// Hintergrund-Indizierung (Synchronisation Dateisystem -> Datenbank)
+// Background indexing (file system -> database synchronization).
 async function runBackgroundIndexing() {
     logDebug('Starting background indexing...');
     const configDir = getConfigDir();
@@ -963,7 +963,7 @@ async function runBackgroundIndexing() {
     let totalItems = 0;
     let items = [];
 
-    // Nur neue Struktur scannen (alte Struktur wird meist nur einmal migriert)
+    // Scan only the new structure (the old structure is usually migrated only once).
     if (fs.existsSync(baseDir)) {
         try {
             const years = fs.readdirSync(baseDir).filter(y => /^\d{4}$/.test(y));
@@ -1010,7 +1010,7 @@ async function runBackgroundIndexing() {
                                 const result = saveCapturesBatch(items);
                                 totalItems += items.length;
                                 items = [];
-                                // Kurz warten um System nicht zu stark zu belasten
+                                // Wait briefly to avoid excessive system load.
                                 await new Promise(r => setTimeout(r, 100));
                             }
                         }
@@ -1029,9 +1029,9 @@ async function runBackgroundIndexing() {
     }
 }
 
-// Alle 60 Minuten Indizierung laufen lassen
+// Run indexing every 60 minutes.
 setInterval(runBackgroundIndexing, 60 * 60 * 1000);
-// Auch einmalig 10 Sekunden nach Start
+// Also run once 10 seconds after startup.
 setTimeout(runBackgroundIndexing, 10000);
 
 app.whenReady().then(() => {
@@ -1040,6 +1040,6 @@ app.whenReady().then(() => {
 });
 
 app.on('window-all-closed', (e) => {
-    // Tray app bleibt offen
+    // Keep the tray app open.
     e.preventDefault();
 });

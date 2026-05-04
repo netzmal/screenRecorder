@@ -2,7 +2,7 @@ const { app, BrowserWindow, Menu, dialog, ipcMain, shell, clipboard, screen, Not
 const path = require('path');
 
 // --- Single Instance Lock & Argument Handling ---
-// Dies muss so früh wie möglich geschehen, noch vor dem Laden der Config-Module
+// This must happen as early as possible, before loading the config modules.
 const isScreensaverPreview = process.argv.find(arg => arg.toLowerCase().startsWith('/p'));
 const isScreensaverStartArg = process.argv.includes('screensaver') || process.argv.find(arg => arg.toLowerCase().startsWith('/s'));
 
@@ -13,11 +13,11 @@ if (isScreensaverPreview) {
 }
 
 if (isScreensaverStartArg) {
-    // app.name vorab setzen (identisch zu config.js), damit global.realUserData den selben
-    // Pfad wie Tray/Viewer zeigt – andernfalls würden sie unterschiedliche Datenbanken nutzen.
+    // Set app.name in advance (same as config.js) so global.realUserData points to the same
+    // path as tray/viewer; otherwise they would use different databases.
     app.name = 'screen-recorder-shared';
     global.realUserData = app.getPath('userData');
-    // Eigenes Unterverzeichnis für den Screensaver, um den Single-Instance-Lock zu umgehen
+    // Own subdirectory for the screensaver to bypass the single-instance lock.
     app.setPath('userData', path.join(global.realUserData, 'screensaver-proc'));
 } else {
     const gotTheLock = app.requestSingleInstanceLock();
@@ -37,7 +37,7 @@ const i18n = require('../shared/i18n');
 const { runWindowsOcrBatch } = require('../shared/ocr-helper');
 const { exec, spawn } = require('child_process');
 
-// AppUserModelId setzen für Benachrichtigungen unter Windows
+// Set AppUserModelId for notifications on Windows.
 if (process.platform === 'win32') {
     app.setAppUserModelId('com.screen.recorder');
 }
@@ -46,14 +46,14 @@ let mainWindow;
 let configWindow;
 let isTrayRunning = false;
 
-// Single Instance Event Handler (nur wenn wir der Primär-Prozess sind)
+// Single instance event handler (only when this is the primary process).
 app.on('second-instance', (event, commandLine, workingDirectory) => {
     const args = commandLine;
     const isScreensaverConfig = args.find(arg => arg.toLowerCase().startsWith('/c'));
     const isTray = args.includes('tray');
 
     if (isScreensaverConfig) {
-        // Konfiguration in dieser Instanz öffnen
+        // Open configuration in this instance.
         if (!mainWindow) {
             createMainWindow();
             setTimeout(() => {
@@ -69,11 +69,11 @@ app.on('second-instance', (event, commandLine, workingDirectory) => {
             mainWindow.focus();
         }
     } else if (isTray) {
-        // Tray-Logik laden
+        // Load tray logic.
         isTrayRunning = true;
         require('../tray/main.js');
     } else {
-        // Normaler Viewer-Start
+        // Normal viewer startup.
         if (mainWindow) {
             if (mainWindow.isMinimized()) mainWindow.restore();
             mainWindow.focus();
@@ -83,13 +83,13 @@ app.on('second-instance', (event, commandLine, workingDirectory) => {
     }
 });
 
-// Config Migration durchführen
+// Run config migration.
 migrateConfig();
 
-// Sicherstellen, dass Batch OCR Status zurückgesetzt ist
+// Ensure the batch OCR status is reset.
 setIsBatchOcrRunning(false);
 
-// i18n initialisieren
+// Initialize i18n.
 const configLanguage = getLanguage();
 i18n.init(configLanguage === 'auto' ? null : configLanguage);
 
@@ -139,7 +139,7 @@ function createMainWindow() {
         }
     });
 
-    // Explizit das Icon setzen (manchmal nötig unter Windows)
+    // Explicitly set the icon (sometimes needed on Windows).
     if (process.platform === 'win32') {
         mainWindow.setIcon(icon);
     }
@@ -153,7 +153,7 @@ function createMainWindow() {
         mainWindow = null;
     });
 
-    // DB initialisieren
+    // Initialize DB.
     initDb();
 }
 
@@ -173,7 +173,7 @@ ipcMain.on('test-notification', (event) => {
     }
 });
 
-// Beende die App, wenn alle Fenster geschlossen sind (nur im Viewer-Modus)
+// Quit the app when all windows are closed (viewer mode only).
 app.on('window-all-closed', () => {
     if (process.platform !== 'darwin' && !isTrayRunning) {
         app.quit();
@@ -207,7 +207,7 @@ function createConfigWindow() {
         }
     });
 
-    // Explizit das Icon setzen
+    // Explicitly set the icon.
     if (process.platform === 'win32') {
         configWindow.setIcon(icon);
     }
@@ -225,16 +225,16 @@ app.whenReady().then(() => {
                               process.argv.find(arg => arg.toLowerCase().startsWith('/s'));
     const isScreensaverConfig = process.argv.find(arg => arg.toLowerCase().startsWith('/c'));
 
-    // Wenn als "tray" gestartet, Tray-Logik laden, sonst Viewer
+    // If started as "tray", load tray logic; otherwise start the viewer.
     if (process.argv.includes('tray')) {
-        // Sicherstellen, dass die Migration auch im Tray-Modus läuft, falls es der erste Start ist
+        // Ensure migration also runs in tray mode if this is the first startup.
         migrateConfig();
         isTrayRunning = true;
         require('../tray/main.js');
     } else if (isScreensaverStart) {
         require('../screensaver/main.js');
     } else if (isScreensaverConfig) {
-        // Wenn der Screensaver konfiguriert werden soll, öffnen wir direkt das Config-Fenster
+        // If the screensaver should be configured, open the config window directly.
         createMainWindow();
         setTimeout(() => {
             if (mainWindow) {
@@ -248,17 +248,17 @@ app.whenReady().then(() => {
 });
 
 ipcMain.on('update-screensaver-settings', (event, { enabled, timeoutSeconds, requirePassword }) => {
-    // Wenn gepackt, liegt shared außerhalb der asar oder in der asar.
-    // Wir nutzen path.join(__dirname, '..', 'shared', 'screensaver-helper.ps1')
-    // Electron asar extrahiert Dateien normalerweise nicht automatisch für exec.
-    // Aber .ps1 Dateien sollten lesbar sein.
+    // When packaged, shared is either outside the asar or inside it.
+    // Use path.join(__dirname, '..', 'shared', 'screensaver-helper.ps1').
+    // Electron asar normally does not automatically extract files for exec.
+    // But .ps1 files should be readable.
     let scriptPath = path.join(__dirname, '..', 'shared', 'screensaver-helper.ps1');
     if (app.isPackaged) {
         scriptPath = scriptPath.replace('app.asar', 'app.asar.unpacked');
     }
     const exePath = process.execPath;
     
-    // In PowerShell müssen wir den Pfad zum Skript korrekt quoten
+    // In PowerShell, quote the script path correctly.
     const secureArg = requirePassword ? '-secure' : '';
     const cmd = `powershell.exe -NoProfile -ExecutionPolicy Bypass -File "${scriptPath}" -exePath "${exePath}" -timeoutSeconds ${timeoutSeconds} ${secureArg} ${enabled ? '-enable' : ''}`;
     
@@ -279,7 +279,7 @@ ipcMain.on('update-screensaver-settings', (event, { enabled, timeoutSeconds, req
 });
 
 ipcMain.on('test-screensaver', (event) => {
-    // Startet den Screensaver sofort für einen Test
+    // Starts the screensaver immediately for a test.
     if (app.isPackaged) {
         spawn(process.execPath, ['screensaver'], {
             detached: true,
@@ -506,12 +506,12 @@ ipcMain.on('get-config', async (event) => {
 
 ipcMain.handle('is-tray-running', async () => {
     return new Promise((resolve) => {
-        // Wir suchen nach "Screen Recorder.exe" im Prozess-Baum
-        // Da der Viewer und Tray die gleiche EXE sind, müssen wir nach dem "tray" Argument suchen, 
-        // oder wir verlassen uns auf den Fenstertitel (Tray hat kein Fenster, aber wir können tasklist nutzen)
-        // Einfacher: Wir prüfen tasklist auf "Screen Recorder.exe" und zählen die Instanzen.
-        // Wenn > 1, läuft wahrscheinlich der Tray (oder ein zweiter Viewer).
-        // Eleganter: PowerShell Abfrage der Commandline
+        // Search for "Screen Recorder.exe" in the process tree.
+        // Since viewer and tray use the same EXE, look for the "tray" argument,
+        // or rely on the window title (the tray has no window, but tasklist can be used).
+        // Simpler approach: check tasklist for "Screen Recorder.exe" and count instances.
+        // If > 1, the tray is probably running (or a second viewer).
+        // More elegant: PowerShell query for the command line.
         const cmd = `powershell -NoProfile -Command "Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -like '*tray*' } | Select-Object -ExpandProperty ProcessId"`;
         exec(cmd, (err, stdout) => {
             if (err || !stdout.trim()) {
@@ -530,15 +530,15 @@ ipcMain.on('set-autostart', (event, enabled) => {
     const startupPath = path.join(process.env.APPDATA, 'Microsoft', 'Windows', 'Start Menu', 'Programs', 'Startup', 'Screen Recorder Tray.lnk');
     const commonStartupPath = 'C:\\ProgramData\\Microsoft\\Windows\\Start Menu\\Programs\\Startup\\Screen Recorder Tray.lnk';
     
-    // Wir versuchen den LNK im Common Startup zu verwalten (benötigt ggf. Admin-Rechte, falls vom User getriggert)
-    // Wenn das fehlschlägt, nutzen wir den User-Startup.
+    // Try to manage the LNK in common Startup (may require admin rights when triggered by the user).
+    // If that fails, use the user's Startup folder.
     
     const exePath = process.execPath;
     const args = 'tray';
     
     if (enabled) {
-        // PowerShell nutzen um LNK zu erstellen (da wir kein natives Modul dafür haben)
-        // Wir nutzen EncodedCommand um Quoting-Probleme mit Pfaden zu vermeiden
+        // Use PowerShell to create the LNK because there is no native module for it.
+        // Use EncodedCommand to avoid quoting problems with paths.
         const script = [
             `$WshShell = New-Object -ComObject WScript.Shell`,
             `$Shortcut = $WshShell.CreateShortcut('${startupPath.replace(/'/g, "''")}')`,
@@ -552,9 +552,9 @@ ipcMain.on('set-autostart', (event, enabled) => {
             if (err) console.error('Failed to create autostart link', err);
         });
     } else {
-        // Link entfernen (beide Orte prüfen zur Sicherheit)
+        // Remove link (check both locations for safety).
         if (fs.existsSync(startupPath)) fs.unlinkSync(startupPath);
-        // Common Startup erfordert meist Admin, wir versuchen es trotzdem mal
+        // Common Startup usually requires admin, but try it anyway.
         try {
             if (fs.existsSync(commonStartupPath)) fs.unlinkSync(commonStartupPath);
         } catch (e) {}
@@ -678,7 +678,7 @@ ipcMain.handle('migrate-data', async (event) => {
     
     let allItems = [];
 
-    // 1. Scanne ALTE Struktur YYYY-MM-DD
+    // 1. Scan old structure YYYY-MM-DD.
     if (fs.existsSync(oldCapturesDir)) {
         const dates = fs.readdirSync(oldCapturesDir).filter(d => /^\d{4}-\d{2}-\d{2}$/.test(d));
         for (const date of dates) {
@@ -727,7 +727,7 @@ ipcMain.handle('migrate-data', async (event) => {
         }
     }
 
-    // 2. Scanne neue Struktur jahr/monat/tag
+    // 2. Scan new structure year/month/day.
     if (fs.existsSync(baseDir)) {
         const years = fs.readdirSync(baseDir).filter(y => /^\d{4}$/.test(y));
         for (const year of years) {
@@ -743,7 +743,7 @@ ipcMain.handle('migrate-data', async (event) => {
                     const files = fs.readdirSync(dayDir);
                     const timeGroups = {};
 
-                    // Zuerst Meta-Dateien in diesem Tag finden
+                    // First find meta files for this day.
                     files.forEach(file => {
                         const metaMatch = file.match(/^meta_(\d{2}-\d{2}-\d{2})\.json$/);
                         if (metaMatch) {
@@ -755,7 +755,7 @@ ipcMain.handle('migrate-data', async (event) => {
                         }
                     });
 
-                    // Dann Screenshots zuordnen
+                    // Then assign screenshots.
                     files.forEach(file => {
                         if (file.startsWith('screen')) {
                             const screenIdx = file.replace('screen', '');
@@ -803,7 +803,7 @@ ipcMain.handle('migrate-data', async (event) => {
         }
     }
 
-    // 3. In Batches speichern und Fortschritt melden
+    // 3. Save in batches and report progress.
     const total = allItems.length;
     let processed = 0;
     
@@ -919,7 +919,7 @@ ipcMain.on('start-batch-ocr', async (event) => {
             return;
         }
 
-        // Neue Struktur: Jahr / Monat / Tag / screenX / HH-mm-ss.jpg
+        // New structure: year / month / day / screenX / HH-mm-ss.jpg.
         const tasks = [];
         
         const years = fs.readdirSync(baseDir).filter(d => /^\d{4}$/.test(d));
@@ -949,7 +949,7 @@ ipcMain.on('start-batch-ocr', async (event) => {
                     });
 
                     for (const timePart of Object.keys(timeGroups)) {
-                        // Prüfen ob bereits in DB mit OCR Text
+                        // Check whether it is already in the DB with OCR text.
                         const row = getCaptureByDateTime(dateStr, timePart);
                         
                         let needsOcr = true;
@@ -976,7 +976,7 @@ ipcMain.on('start-batch-ocr', async (event) => {
             return;
         }
 
-        // 2. Verarbeite Aufgaben
+        // 2. Process tasks.
         const id = powerSaveBlocker.start('prevent-app-suspension');
         console.log(`Batch OCR gestartet: ${tasks.length} Aufgaben zu verarbeiten. PowerSaveBlocker ID: ${id}`);
         
@@ -988,7 +988,7 @@ ipcMain.on('start-batch-ocr', async (event) => {
             if (app.isPackaged) {
                 scriptPath = scriptPath.replace('app.asar', 'app.asar.unpacked');
             }
-            const batchSize = 50; // Mehrere Zeitpunkte bündeln um PowerShell-Starts zu minimieren
+            const batchSize = 50; // Bundle multiple timestamps to minimize PowerShell starts.
 
             for (let i = 0; i < tasks.length; i += batchSize) {
                 if (abortBatchOcr) break;
@@ -1015,7 +1015,7 @@ ipcMain.on('start-batch-ocr', async (event) => {
                     for (const task of chunk) {
                         let combinedText = '';
                         task.imagePaths.forEach((img, idx) => {
-                            // Pfad normalisieren für den Match mit den Ergebnissen aus ocr-helper.js
+                            // Normalize path to match results from ocr-helper.js.
                             const normalizedPath = path.normalize(img).toLowerCase();
                             const text = ocrResults[normalizedPath] || '';
                             combinedText += `--- Screen ${idx} ---\n${text}\n\n`;

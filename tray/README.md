@@ -1,42 +1,42 @@
 # Screen Recorder - Tray (Recorder)
 
-Der Tray-Recorder ist ein Hintergrunddienst, der für die Aufzeichnung von Bildschirmaktivitäten und deren Indizierung zuständig ist.
+The tray recorder is a background service responsible for recording screen activity and indexing it.
 
-## Funktionen
+## Features
 
-*   **Hintergrundbetrieb**: Läuft minimiert im System Tray und informiert via Tooltips über Aktionen.
-*   **Screenshot-Engine**: Erstellt regelmäßig Bilder aller angeschlossenen Monitore.
-*   **Intelligentes Metadaten-Tracking**: 
-    *   Erfasst Fenstertitel aller aktiven Applikationen.
-    *   Extrahiert aktuelle **Browser-URLs** aus Chrome und Microsoft Edge via UIAutomation.
-    *   Ermittelt **offene Dateipfade** aus Windows Explorer Fenstern.
-*   **OCR-Verarbeitung (Texterkennung)**:
-    *   Nutzt primär die **Native Windows OCR API** (via PowerShell) für maximale Geschwindigkeit.
-    *   Fallback auf `tesseract.js` bei Bedarf.
-    *   Läuft standardmäßig im **Idle-Modus**, um die Systemressourcen während der Arbeit zu schonen.
-    *   **Batch-Optimierung**: Fasst mehrere Erkennungsaufgaben zusammen, um den Overhead zu minimieren.
-    *   **Fast-Mode**: Optionale 50% Skalierung der Bilder für schnellere Erkennung bei geringerer CPU-Last.
-*   **Dynamische Timer**: 
-    *   Screenshot-Intervalle sind konfigurierbar.
-    *   Sofortige Screenshots bei Fensterwechseln oder Monitor-Fokus-Änderungen (mit einstellbarem Delay).
-*   **Zustandsüberwachung**: 
-    *   Pausiert automatisch im Energiesparmodus oder während intensiver OCR-Phasen.
-    *   **Screensaver-Integration**: Pausiert die Aufnahme automatisch, sobald der integrierte Bildschirmschoner aktiv ist, um Ressourcen für die Hintergrund-OCR freizugeben.
+*   **Background operation**: Runs minimized in the system tray and reports actions via tooltips.
+*   **Screenshot engine**: Regularly captures images of all connected monitors.
+*   **Smart metadata tracking**:
+    *   Captures window titles of all active applications.
+    *   Extracts current **browser URLs** from Chrome and Microsoft Edge via UIAutomation.
+    *   Detects **open file paths** from Windows Explorer windows.
+*   **OCR processing (text recognition)**:
+    *   Primarily uses the **native Windows OCR API** (via PowerShell) for maximum speed.
+    *   Falls back to `tesseract.js` when needed.
+    *   Runs in **idle mode** by default to preserve system resources while working.
+    *   **Batch optimization**: Groups multiple recognition tasks to minimize overhead.
+    *   **Fast mode**: Optional 50% image scaling for faster recognition with lower CPU load.
+*   **Dynamic timers**:
+    *   Screenshot intervals are configurable.
+    *   Immediate screenshots can be triggered by window changes or monitor focus changes (with configurable delay).
+*   **State monitoring**:
+    *   Automatically pauses in power-save mode or during intensive OCR phases.
+    *   **Screensaver integration**: Automatically pauses recording when the integrated screensaver is active, freeing resources for background OCR.
 
-## Technik
+## Technology
 
-*   **Runtime**: Electron (Tray & IPC).
-*   **Metadaten**: Ein eingebettetes PowerShell-Skript nutzt `UIAutomation` und `Shell.Application`, um Systeminformationen ohne externe Abhängigkeiten zu sammeln.
-*   **Datenhaltung**: Schreibt direkt und ausschließlich in die zentrale SQLite-Datenbank (`shared/db.js`). Es werden keine JSON-Metadaten-Dateien mehr auf dem Dateisystem abgelegt.
-*   **OCR**: Persistenter Tesseract-Worker zur Vermeidung von Overhead durch ständiges Laden der Sprachdaten.
+*   **Runtime**: Electron (tray & IPC).
+*   **Metadata**: An embedded PowerShell script uses `UIAutomation` and `Shell.Application` to collect system information without external dependencies.
+*   **Data storage**: Writes directly and exclusively to the central SQLite database (`shared/db.js`). No JSON metadata files are stored on the file system anymore.
+*   **OCR**: Persistent Tesseract worker to avoid the overhead of repeatedly loading language data.
 
-## Starten
+## Starting
 
-Aus dem Hauptverzeichnis:
+From the repository root:
 ```bash
 npm run start:tray
 ```
-Oder direkt aus diesem Verzeichnis:
+Or directly from this directory:
 ```bash
 npm start
 ```

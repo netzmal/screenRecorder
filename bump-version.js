@@ -7,7 +7,7 @@ function updateVersion(filePath) {
     const pkg = JSON.parse(fs.readFileSync(filePath, 'utf8'));
     let version = pkg.version || '1.0.0';
     
-    // Format: major.minor.build
+    // Format: major.minor.build.
     const parts = version.split('.');
     
     let major = parts[0] || '1';

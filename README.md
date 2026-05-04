@@ -1,59 +1,58 @@
 # Screen Recorder
 
-Ein modulares System zur kontinuierlichen Aufzeichnung von Bildschirminhalten unter Windows, optimiert für die Dokumentation von Arbeitsaktivitäten und die einfache Erstellung von Kundenrechnungen.
+A modular system for continuously recording screen content on Windows, optimized for documenting work activity and simplifying customer invoice preparation.
 
-## Hauptfunktionen
+## Main Features
 
-*   **Kontinuierliche Aufzeichnung**: Erstellt automatisch Screenshots aller Monitore in definierten Intervallen (standardmäßig alle 60 Sek.).
-*   **Ereignisbasierte Screenshots**: Löst Screenshots bei Fensterwechseln oder Fokusänderungen aus.
-*   **Intelligente Metadaten-Erfassung**: Speichert Fenstertitel, geöffnete Explorer-Dateien und Browser-URLs (Chrome/Edge) zu jedem Screenshot.
-*   **OCR (Texterkennung)**: Indiziert den Text in Screenshots im Hintergrund (Idle-Modus oder via Screensaver), um sie durchsuchbar zu machen.
-*   **KI-Zusammenfassung**: Generiert mithilfe der OpenAI API (ChatGPT) strukturierte Tagesberichte aus den erfassten Aktivitäten.
-*   **Bildschirmschoner-Modus**: Ein dediziertes OCR-Dashboard, das während Inaktivität den Monitor-Sleep verhindert und den Verarbeitungsstatus visualisiert.
-*   **Datenschutz & Effizienz**: Erkennt Idle-Phasen, pausiert Aufnahmen im Energiesparmodus oder Screensaver-Betrieb und ermöglicht die Filterung unveränderter Bildschirminhalte.
+*   **Continuous recording**: Automatically captures screenshots of all monitors at configured intervals (60 seconds by default).
+*   **Event-based screenshots**: Triggers screenshots on window changes or focus changes.
+*   **Smart metadata capture**: Stores window titles, open Explorer files, and browser URLs (Chrome/Edge) for each screenshot.
+*   **Screensaver OCR (text recognition)**: Indexes text in screenshots in the background (idle mode or via screensaver) so they become searchable.
+*   **AI summary**: Uses the OpenAI API (ChatGPT) to generate structured daily reports from captured activity.
+*   **Efficiency**: Detects idle phases, pauses recording during power-save or screensaver operation, and can filter unchanged screen content.
 
-## Projektstruktur
+## Project Structure
 
-Das Projekt besteht aus drei Hauptbereichen:
+The project consists of four main areas:
 
-*   **[Tray (Recorder)](./tray/README.md)**: Der Hintergrunddienst. Er kümmert sich um die Screenshot-Aufnahme, die Metadaten-Erfassung via PowerShell und die OCR-Verarbeitung.
-*   **[Viewer](./viewer/README.md)**: Die Benutzeroberfläche. Ermöglicht das Durchsuchen der Historie, die KI-Analyse und die Konfiguration.
-*   **[Screensaver](./screensaver/README.md)**: Ein interaktives OCR-Dashboard, das in Arbeitspausen die Texterkennung visualisiert und beschleunigt.
-*   **[Shared](./shared/README.md)**: Gemeinsame Logik für die SQLite-Datenbank (`metadata.db`) und die zentrale Konfiguration (`electron-store`).
+*   **[Tray (Recorder)](./tray/README.md)**: The background service. It handles screenshot capture and metadata collection via PowerShell.
+*   **[Viewer](./viewer/README.md)**: The user interface. It supports history browsing, AI analysis, and configuration.
+*   **[Screensaver](./screensaver/README.md)**: An interactive OCR dashboard that visualizes text recognition during work breaks.
+*   **[Shared](./shared/README.md)**: Shared logic for the SQLite database (`metadata.db`) and central configuration (`electron-store`).
 
-## Kommunikation & Datenhaltung
+## Communication & Data Storage
 
-### Datenfluss
-1.  **Tray-Recorder** erstellt Screenshots und erfasst Metadaten (Fenstertitel, URLs, Pfade) via PowerShell. Diese werden direkt in der Datenbank gespeichert.
-2.  Metadaten werden zentral in einer **SQLite-Datenbank** (`metadata.db`) im Shared-Verzeichnis in den Anwendungsdaten (`%APPDATA%\screen-recorder-shared`) verwaltet.
-3.  Im Idle-Modus führt der Recorder **OCR** auf neuen Screenshots aus und aktualisiert den Suchindex in der DB.
-4.  **Viewer** liest die Screenshots vom Dateisystem und die Metadaten aus der SQLite-DB.
-5.  Für die **KI-Zusammenfassung** sendet der Viewer aggregierte Metadaten an die OpenAI API.
+### Data Flow
+1.  The **tray recorder** captures screenshots and collects metadata (window titles, URLs, paths) via PowerShell. These are saved directly to the database.
+2.  Metadata is managed centrally in a **SQLite database** (`metadata.db`) inside the shared application data directory (`%APPDATA%\screen-recorder-shared`).
+3.  During idle mode, the screensaver runs **OCR** on new screenshots and updates the search index in the database.
+4.  The **viewer** reads screenshots from the file system and metadata from the SQLite database.
+5.  For the **AI summary**, the viewer sends aggregated metadata to the OpenAI API.
 
-### Speicherorte
-*   **Screenshots**: Standardmäßig im Windows-Bilderordner unter `ScreenRecorder_Captures`.
-*   **Datenbank**: Liegt im AppData-Verzeichnis (`%APPDATA%\screen-recorder-shared\metadata.db`). Sie enthält alle Metadaten (Titel, URLs, OCR-Text), was die Dateianzahl im Vergleich zu JSON-basierten Systemen massiv reduziert.
-*   **Konfiguration**: Wird via `electron-store` im gleichen AppData-Verzeichnis (`%APPDATA%\screen-recorder-shared`) verwaltet.
+### Storage Locations
+*   **Screenshots**: By default, in the Windows Pictures folder under `ScreenRecorder_Captures`.
+*   **Database**: Stored in the AppData directory (`%APPDATA%\screen-recorder-shared\metadata.db`). It contains all metadata (titles, URLs, OCR text), which greatly reduces file count compared with JSON-based systems.
+*   **Configuration**: Managed via `electron-store` in the same AppData directory (`%APPDATA%\screen-recorder-shared`).
 
-## Voraussetzungen
+## Requirements
 
-*   **Node.js**: (Version 16 oder höher empfohlen)
-*   **Windows OS**: Die Anwendung nutzt Windows-spezifische APIs (PowerShell UIAutomation, `screenshot-desktop`).
+*   **Node.js**: Version 16 or newer recommended.
+*   **Windows OS**: The application uses Windows-specific APIs (PowerShell UIAutomation, `screenshot-desktop`).
 
 ## Installation
 
-1.  Repository klonen oder herunterladen.
-2.  Abhängigkeiten im Hauptverzeichnis installieren:
+1.  Clone or download the repository.
+2.  Install dependencies in the repository root:
     ```bash
     npm install
     ```
 
-## Starten der Anwendung
+## Starting the Application
 
-*   **Alles starten (Tray + Viewer)**: `npm run start:all`
-*   **Nur Viewer**: `npm run start:viewer`
-*   **Nur Recorder (Tray)**: `npm run start:tray`
-*   **Nur Bildschirmschoner**: `npm run start:screensaver`
-*   **Installer erzeugen**: `npm run build:installer`
+*   **Start everything (tray + viewer)**: `npm run start:all`
+*   **Viewer only**: `npm run start:viewer`
+*   **Recorder only (tray)**: `npm run start:tray`
+*   **Screensaver only**: `npm run start:screensaver`
+*   **Build installer**: `npm run build:installer`
 
-Der Installer (NSIS) bündelt beide Komponenten in einem einzigen Windows-Paket.
+The installer (NSIS) bundles both components into a single Windows package.

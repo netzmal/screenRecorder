@@ -1,23 +1,23 @@
 # Screen Recorder - Installer
 
-Dieses Modul ist für die Erstellung des Windows-Installers zuständig.
+This module is responsible for creating the Windows installer.
 
-## Technik
-Es wird **electron-builder** verwendet, um die verschiedenen Komponenten (`viewer`, `tray`, `shared`) zu einem installierbaren Paket zu bündeln.
+## Technology
+It uses **electron-builder** to bundle the different components (`viewer`, `tray`, `shared`) into an installable package.
 
-## Build-Prozess
-Der Build kann direkt aus dem Hauptverzeichnis gestartet werden:
+## Build Process
+The build can be started from the repository root:
 ```bash
 npm run build:installer
 ```
 
-Oder in diesem Verzeichnis:
+Or from this directory:
 ```bash
 npm install
 npm run build
 ```
 
-Das Ergebnis findet sich im Ordner `dist/`.
+The result is written to the `dist/` folder.
 
-## Datensicherheit
-Bei Updates oder einer Deinstallation bleiben die Benutzerdaten (Konfiguration und SQLite-Metadaten) unter `%APPDATA%\screen-recorder-shared` erhalten. Dies ist in `installer.nsh` so konfiguriert, um Datenverlust zu vermeiden.
+## Data Safety
+During updates or uninstallations, user data (configuration and SQLite metadata) under `%APPDATA%\screen-recorder-shared` is preserved. This is configured in `installer.nsh` to prevent data loss.

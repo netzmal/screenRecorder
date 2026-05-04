@@ -6,21 +6,21 @@ let currentLocale = 'en';
 let translations = {};
 
 /**
- * Initialisiert i18n
- * @param {string} forcedLocale - Optionaler Override der Sprache
+ * Initializes i18n.
+ * @param {string} forcedLocale - Optional language override.
  */
 function init(forcedLocale = null) {
-  // Bestimme Sprache: forced > app.getLocale() > 'en'
+  // Determine language: forced > app.getLocale() > 'en'.
   let locale = forcedLocale;
   
   if (!locale) {
     try {
-      // Electron app.getLocale() gibt Systemsprache zurück
-      // Im Renderer-Prozess müssen wir prüfen, ob app verfügbar ist
+      // Electron app.getLocale() returns the system language.
+      // In the renderer process, check whether app is available.
       const electron = require('electron');
       let appObj = electron.app;
       
-      // Fallback für Renderer-Prozess (remote ist veraltet, aber falls vorhanden)
+      // Fallback for the renderer process (remote is deprecated, but may still exist).
       if (!appObj && electron.remote) {
         try {
           appObj = electron.remote.app;
@@ -49,7 +49,7 @@ function init(forcedLocale = null) {
 }
 
 /**
- * Lädt die Übersetzungsdatei
+ * Loads the translation file.
  */
 function loadTranslations(locale) {
   try {
@@ -59,7 +59,7 @@ function loadTranslations(locale) {
       translations = JSON.parse(content);
     } else {
       console.error(`Translation file not found: ${localePath}`);
-      // Fallback auf Englisch, falls nicht bereits geschehen
+      // Fall back to English if that has not already happened.
       if (locale !== 'en') {
         loadTranslations('en');
       }
@@ -70,7 +70,7 @@ function loadTranslations(locale) {
 }
 
 /**
- * Holt eine Übersetzung anhand eines Pfads (z.B. 'viewer.tabs.titles')
+ * Gets a translation from a path (for example 'viewer.tabs.titles').
  * @param {string} keyPath 
  * @param {Object} data - Platzhalter-Daten (z.B. {count: 5})
  */
@@ -82,13 +82,13 @@ function t(keyPath, data = {}) {
     if (result && result[key]) {
       result = result[key];
     } else {
-      return keyPath; // Fallback: Key-Pfad selbst zurückgeben
+      return keyPath; // Fallback: return the key path itself.
     }
   }
 
   if (typeof result !== 'string') return keyPath;
 
-  // Platzhalter ersetzen {key}
+  // Replace placeholders {key}.
   let translated = result;
   for (const [key, value] of Object.entries(data)) {
     translated = translated.replace(new RegExp(`\\{${key}\\}`, 'g'), value);

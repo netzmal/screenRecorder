@@ -1,10 +1,10 @@
 const { app } = require('electron');
 const path = require('path');
 
-// App Name so früh wie möglich setzen, damit electron-store den richtigen Pfad nutzt
+// Set the app name as early as possible so electron-store uses the correct path.
 if (app) {
     try {
-        // Der Name bestimmt den Ordner unter AppData
+        // The name determines the folder under AppData.
         if (app.name !== 'screen-recorder-shared') {
             app.name = 'screen-recorder-shared';
         }
@@ -13,7 +13,7 @@ if (app) {
     }
 }
 
-// Robustes Laden von electron-store (CJS/ESM Interop)
+// Robust electron-store loading (CJS/ESM interop).
 let Store;
 try {
     const electronStore = require('electron-store');
@@ -26,15 +26,15 @@ let store;
 try {
     if (!Store) throw new Error('Store constructor is undefined');
 
-    // Falls app.getPath('userData') nicht verfügbar ist (z.B. in manchen Umgebungen), 
-    // nutzen wir den Prozess-Namen oder Umgebungsvariablen als Fallback
+    // If app.getPath('userData') is unavailable (for example in some environments),
+    // use the process name or environment variables as a fallback.
     let baseDir;
     if (global.realUserData) {
         baseDir = global.realUserData;
     } else if (app && app.isReady()) {
         baseDir = app.getPath('userData');
     } else {
-        // Fallback-Logik für Pfad-Bestimmung
+        // Fallback logic for path resolution.
         const appData = process.env.APPDATA || (process.platform === 'darwin' ? process.env.HOME + '/Library/Application Support' : process.env.HOME + '/.config');
         baseDir = path.join(appData, 'screen-recorder-shared');
     }
@@ -49,7 +49,7 @@ try {
     });
 } catch (e) {
     console.error('Failed to initialize electron-store:', e);
-    // Falls wir außerhalb von Electron sind oder Store-Laden fehlschlug
+    // If we are outside Electron or store loading failed.
     const MockStore = class {
         constructor() { this.data = {}; }
         get(key, def) { return this.data[key] !== undefined ? this.data[key] : def; }
@@ -70,7 +70,7 @@ const getConfigDir = () => {
     try {
         return store.get('screenshotDir', app.getPath('pictures'));
     } catch (e) {
-        // Fallback für Node.js ohne Electron app
+        // Fallback for Node.js without the Electron app.
         return store.get('screenshotDir', process.env.USERPROFILE + '\\Pictures');
     }
 };
@@ -84,7 +84,7 @@ const setOnlyOnChanges = (value) => store.set('onlyOnChanges', value);
 
 const getScaleMode = () => store.get('scaleMode', 'fit');
 const setScaleMode = (mode) => {
-    // Abwärtskompatibilität für 'auto' -> 'list'
+    // Backward compatibility for 'auto' -> 'list'.
     const finalMode = mode === 'auto' ? 'list' : mode;
     store.set('scaleMode', finalMode);
 };
@@ -158,7 +158,7 @@ const migrateConfig = () => {
         const userDataPath = app.getPath('userData');
         const newConfigFilePath = path.join(userDataPath, 'config.json');
 
-    // Falls die neue Config schon existiert und nicht fast leer ist, überspringen wir die Migration
+    // If the new config already exists and is not almost empty, skip migration.
     if (fs.existsSync(newConfigFilePath)) {
         try {
             const stats = fs.statSync(newConfigFilePath);
@@ -179,8 +179,8 @@ const migrateConfig = () => {
                 if (!fs.existsSync(userDataPath)) fs.mkdirSync(userDataPath, { recursive: true });
                 fs.copyFileSync(source.path, newConfigFilePath);
                 console.log(`Config migration from ${source.label} successful`);
-                // Nach erfolgreicher Migration können wir die alten Dateien aufräumen
-                // Aber wir machen das gesammelt am Ende
+                // After a successful migration, the old files can be cleaned up.
+                // This is done collectively at the end.
                 break; 
             } catch (e) {
                 console.error(`Config migration from ${source.label} failed`, e);
@@ -188,7 +188,7 @@ const migrateConfig = () => {
         }
     }
 
-    // Aufräumen: Alte Dateien löschen
+    // Cleanup: delete old files.
     const cleanupPaths = [
         path.join(app.getPath('appData'), 'screen-recorder-tray', 'config.json'),
         path.join(app.getPath('appData'), 'screen-recorder-tray', 'screen-recorder-shared-config.json'),
@@ -200,11 +200,11 @@ const migrateConfig = () => {
     cleanupPaths.forEach(p => {
         if (fs.existsSync(p)) {
             try {
-                // Wir löschen nur, wenn wir sicher sind, dass die Daten migriert wurden
-                // Bei der DB prüfen wir das in initDb(). 
-                // Hier löschen wir sie nur, wenn sie "alt" sind.
-                // Um sicher zu gehen, löschen wir sie erst, wenn initDb() gelaufen ist.
-                // Aber wir können hier zumindest die alten Config-Dateien löschen.
+                // Delete only when we are sure the data has been migrated.
+                // For the DB, this is checked in initDb().
+                // Here, delete files only when they are "old".
+                // To be safe, delete them only after initDb() has run.
+                // But at this point we can at least delete old config files.
                 if (p.endsWith('.json')) {
                     fs.unlinkSync(p);
                 }

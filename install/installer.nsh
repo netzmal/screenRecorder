@@ -1,29 +1,29 @@
 !macro customInit
-  # Beende laufende Instanzen vor der Installation/Upgrade, um Dateisperren zu vermeiden
-  # nsExec::Exec wird verwendet, um das Konsolenfenster zu unterdrücken
+  # Stop running instances before installation/upgrade to avoid file locks.
+  # nsExec::Exec is used to suppress the console window.
   nsExec::Exec 'taskkill /F /IM "Screen Recorder.exe" /T'
 !macroend
 
 !macro customInstall
   WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Run" "ScreenRecorderTray" "$\"$INSTDIR\Screen Recorder.exe$\" tray"
   
-  # Verknüpfung im Common Startup Ordner erstellen (für alle User nach Login)
+  # Create a shortcut in the common Startup folder (for all users after login).
   CreateShortCut "$SMSTARTUP\Screen Recorder Tray.lnk" "$INSTDIR\Screen Recorder.exe" "tray" "$INSTDIR\Screen Recorder.exe" 0
 
-  # Tray App sofort starten
+  # Start the tray app immediately.
   Exec "$\"$INSTDIR\Screen Recorder.exe$\" tray"
 !macroend
 
 !macro customUnInstall
-  # Beende laufende Instanzen vor der Deinstallation
+  # Stop running instances before uninstalling.
   nsExec::Exec 'taskkill /F /IM "Screen Recorder.exe" /T'
 
   DeleteRegValue HKLM "Software\Microsoft\Windows\CurrentVersion\Run" "ScreenRecorderTray"
   
-  # Verknüpfung aus dem Startup Ordner entfernen
+  # Remove the shortcut from the Startup folder.
   Delete "$SMSTARTUP\Screen Recorder Tray.lnk"
 
-  # HINWEIS: Der Ordner $APPDATA\screen-recorder-shared (mit config.json und metadata.db)
-  # wird bewusst NICHT gelöscht, um Benutzereinstellungen und Metadaten bei
-  # Updates oder Neuinstallationen zu erhalten.
+  # NOTE: The $APPDATA\screen-recorder-shared folder (with config.json and metadata.db)
+  # is intentionally NOT deleted, so user settings and metadata are preserved during
+  # updates or reinstallations.
 !macroend

@@ -1,32 +1,32 @@
-# Screen Recorder - Bildschirmschoner
+# Screen Recorder - Screensaver
 
-Der Bildschirmschoner ist ein interaktives OCR-Dashboard, das die Leerlaufzeiten des Systems nutzt, um die Texterkennung (OCR) der aufgenommenen Screenshots im Hintergrund voranzutreiben.
+The screensaver is an interactive OCR dashboard that uses system idle time to advance text recognition (OCR) for captured screenshots in the background.
 
-## Funktionen
+## Features
 
-*   **Interaktives Dashboard**: Visualisiert den Fortschritt der OCR-Verarbeitung in Echtzeit.
-*   **Duale Status-Anzeige**:
-    *   **Linker Ordner**: Symbolisiert den Posteingang mit Bildern, die noch auf die Verarbeitung warten.
-    *   **Rechter Bereich**: Zeigt die Fortschritts-Statistiken der aktuellen Sitzung.
-*   **Fokus-Animation**: Dokumente fliegen aus dem Ordner prominent in den Fokus, verweilen dort während der Texterkennung und verschwinden anschließend räumlich "nach hinten".
-*   **Privatsphäre & Datenschutz**: Statt echter Screenshots werden transparente Dokument-Icons verwendet, um sensible Inhalte zu schützen.
-*   **Multi-Monitor Support**: 
-    *   Das Dashboard wird nur auf dem Hauptbildschirm angezeigt.
-    *   Alle anderen angeschlossenen Monitore werden komplett abgedunkelt (Blackout), um Ablenkungen zu minimieren.
-*   **Energiespar-Sperre**: Nutzt den Electron `powerSaveBlocker`, um das Ausschalten des Monitors und den Standby-Modus während der aktiven OCR-Phase zu verhindern.
-*   **Intelligente Beendigung**: Schließt sich automatisch bei jeder Benutzerinteraktion (Mausbewegung, Tastatur).
+*   **Interactive dashboard**: Visualizes OCR processing progress in real time.
+*   **Dual status display**:
+    *   **Left folder**: Represents the inbox of images waiting for processing.
+    *   **Right area**: Shows progress statistics for the current session.
+*   **Focus animation**: Documents fly out of the folder into focus, remain there during text recognition, and then disappear spatially into the background.
+*   **Privacy & data protection**: Transparent document icons are used instead of real screenshots to protect sensitive content.
+*   **Multi-monitor support**:
+    *   The dashboard is shown only on the primary display.
+    *   All other connected monitors are completely darkened (blackout) to minimize distractions.
+*   **Power-save blocker**: Uses Electron's `powerSaveBlocker` to prevent monitor sleep and system standby during the active OCR phase.
+*   **Smart exit**: Closes automatically on any user interaction (mouse movement, keyboard).
 
-## Technik
+## Technology
 
-*   **Runtime**: Electron (eigenständiger Prozess).
-*   **Datenabfrage**: Nutzt `shared/db.js` zur Ermittlung der OCR-Statistiken (`getPendingOcrCaptures`, `updateOcrText`).
-*   **Hintergrund-Verarbeitung**: Führt die OCR-Logik parallel zur Visualisierung aus, ohne die Hauptanwendung zu belasten.
-*   **Prozess-Steuerung**: Kommuniziert den Status `isScreensaverRunning` an den Tray-Recorder, damit dieser die Neuaufnahmen pausiert.
+*   **Runtime**: Electron (standalone process).
+*   **Data access**: Uses `shared/db.js` to retrieve OCR statistics (`getPendingOcrCaptures`, `updateOcrText`).
+*   **Background processing**: Runs OCR logic alongside the visualization without burdening the main application.
+*   **Process control**: Communicates the `isScreensaverRunning` status to the tray recorder so it can pause new captures.
 
-## Starten
+## Starting
 
-Aus dem Hauptverzeichnis:
+From the repository root:
 ```bash
 npm run start:screensaver
 ```
-Der Bildschirmschoner kann auch manuell über den Viewer (OCR-Tab) oder das Tray-Menü gestartet werden.
+The screensaver can also be started manually from the viewer (OCR tab) or the tray menu.

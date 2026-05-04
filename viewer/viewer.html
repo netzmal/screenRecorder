@@ -36,7 +36,7 @@
 
         #content { display: flex; flex-wrap: wrap; gap: 10px; align-content: flex-start; justify-content: center; }
         
-        /* Layout-Modi */
+        /* Layout modes */
         .mode-fit #content {
             display: grid;
             grid-template-areas: 
@@ -106,7 +106,7 @@
             background: #000;
         }
 
-        /* List Modus (ehemals Auto) */
+        /* List mode (formerly Auto) */
         .mode-list #content {
             display: flex;
             flex-direction: column;
@@ -316,7 +316,7 @@
             background: #000;
         }
 
-        /* Layout-Optimierung für einen Bildschirm in Fit/Heat Modi */
+        /* Layout optimization for one screen in Fit/Heat modes */
         .mode-fit #content.single-display,
         .mode-heat #content.single-display {
             display: flex;
@@ -346,7 +346,7 @@
         #config-btn:hover { background: #e0e0e0; }
         #config-btn svg { width: 16px; height: 16px; fill: #444; }
 
-        /* Datumsauswahl Styles */
+        /* Date picker styles */
         #search-container {
             margin-bottom: 15px;
             position: relative;
@@ -523,7 +523,7 @@
             <div id="tab-content">
                 <div id="tab-screenshots" class="tab-pane active">
                     <div id="content">
-                        <!-- Screenshots werden hier geladen -->
+                        <!-- Screenshots are loaded here -->
                     </div>
                 </div>
                 <div id="tab-titles" class="tab-pane">
@@ -665,7 +665,7 @@
         let availableDates = new Set();
         let timeGroups = []; // Array von { time: 'HH-mm-ss', files: { displayIndex: fullPath }, date: 'YYYY-MM-DD' }
         let currentTimeIndex = 0;
-        let dayCapturesCache = {}; // Cache für Metadaten eines Tages: { timeKey: row }
+        let dayCapturesCache = {}; // Cache for one day's metadata: { timeKey: row }
         let translations = {};
         let lastRefreshKey = "";
         let displaysInfo = [];
@@ -704,8 +704,8 @@
             } else {
                 count.innerText = data.count > 0 ? (data.count + " items") : "";
                 
-                // Da wir die Gesamtanzahl nicht kennen, machen wir einen pulsierenden Balken
-                // oder erhöhen ihn einfach immer weiter (fake progress)
+                // Since the total count is unknown, use a pulsing bar
+                // or keep increasing it continuously (fake progress).
                 if (data.status.toLowerCase().includes('scanning') || data.status.toLowerCase().includes('scanne')) {
                     progressBar.style.width = '20%';
                     progressBar.classList.remove('pulsating');
@@ -729,27 +729,27 @@
 
             lastRefreshKey = ""; // Force refresh on translation change
             applyTranslations();
-            // Abwärtskompatibilität
+            // Backward compatibility.
             if (currentScaleMode === 'auto') currentScaleMode = 'list';
             updateScaleUI();
             
-            // Initialen Scan auslösen
+            // Trigger initial scan.
             scanAvailableDates();
             
-            // Setze initiale currentTimeIndex basierend auf startView beim ersten Laden
-            // (wird in refreshUI angewendet wenn currentTimeIndex ein spezieller Wert ist)
+            // Set initial currentTimeIndex based on startView during first load.
+            // (Applied in refreshUI when currentTimeIndex has a special value.)
             currentTimeIndex = (currentStartView === 'earliest') ? 0 : 999999;
             
             await refreshUI();
             checkTrayStatus();
 
-            // Migration verzögert im Hintergrund ausführen, um Start nicht zu bremsen
+            // Run migration with a delay in the background to avoid slowing startup.
             setTimeout(() => {
                 ipcRenderer.invoke('migrate-data').then(res => {
                     document.getElementById('migration-overlay').style.display = 'none';
                     if (res.count > 0) {
                         console.log(`Migrated ${res.count} items to SQLite`);
-                        // Wenn wir gerade suchen, Suche aktualisieren
+                        // If a search is currently active, refresh it.
                         if (isSearching) {
                             const query = searchInput.value.toLowerCase().trim();
                             if (query) performSearch(query);
@@ -781,9 +781,9 @@
             if (data.defaultMode) currentDefaultMode = data.defaultMode;
             if (data.startView) currentStartView = data.startView;
             if (data.language) {
-                // Bei Sprachwechsel müssen wir neue Konfiguration anfordern für neue Übersetzungen
+                // On language changes, request new configuration for new translations.
                 ipcRenderer.send('get-config');
-                return; // get-config wird config-data auslösen, die alles aktualisiert
+                return; // get-config will trigger config-data, which updates everything.
             }
             if (data.scaleMode) {
                 currentScaleMode = data.scaleMode;
@@ -799,7 +799,7 @@
         function applyTranslations() {
             if (!translations.viewer) return;
             
-            // UI Texte setzen
+            // Set UI texts.
             let title = translations.viewer.title || 'Screen Recorder Viewer';
             if (appVersion) title += ' - v' + appVersion;
             
@@ -836,7 +836,7 @@
 
             // Config Button
             if (document.getElementById('config-btn')) {
-                // Nur den Textknoten nach dem SVG ändern
+                // Change only the text node after the SVG.
                 const btn = document.getElementById('config-btn');
                 btn.title = translations.config.title;
                 if (btn.childNodes.length > 2) {
@@ -844,13 +844,13 @@
                 }
             }
 
-            // Modus Buttons
+            // Mode buttons.
             if (document.getElementById('btn-mode-fit')) document.getElementById('btn-mode-fit').innerText = translations.viewer.modes.fit;
             if (document.getElementById('btn-mode-grid')) document.getElementById('btn-mode-grid').innerText = translations.viewer.modes.grid;
             if (document.getElementById('btn-mode-list')) document.getElementById('btn-mode-list').innerText = translations.viewer.modes.list;
             if (document.getElementById('btn-mode-heat')) document.getElementById('btn-mode-heat').innerText = translations.viewer.modes.heat;
 
-            // KI Tab
+            // AI tab.
             if (document.getElementById('tab-summary-btn')) document.getElementById('tab-summary-btn').innerText = translations.viewer.tabs.summary;
             if (document.querySelector('#tab-summary h3')) document.querySelector('#tab-summary h3').innerText = translations.viewer.ai.title;
             if (document.querySelector('#tab-summary p')) document.querySelector('#tab-summary p').innerText = translations.viewer.ai.desc;
@@ -865,7 +865,7 @@
                 if (btn.innerText === 'Kopieren' || btn.innerText === 'Copy') btn.innerText = translations.viewer.ai.copy;
             });
 
-            // Tabellen Header
+            // Table headers.
             const titlesHeader = document.querySelector('#tab-titles th');
             if (titlesHeader) titlesHeader.innerText = translations.viewer.meta.col_title;
             const filesHeader = document.querySelector('#tab-files th');
@@ -888,7 +888,7 @@
         }
 
         function setScaleMode(mode) {
-            // Aktuelle Zeit speichern, um sie nach dem Wechsel wiederzufinden
+            // Store the current time so it can be found again after switching.
             let currentTimeStr = null;
             if (timeGroups.length > 0 && currentTimeIndex >= 0 && currentTimeIndex < timeGroups.length) {
                 currentTimeStr = timeGroups[currentTimeIndex].time.replace(/:/g, '-');
@@ -897,13 +897,13 @@
             currentScaleMode = mode;
             updateScaleUI();
 
-            // Wenn wir eine Zeit hatten, versuchen wir den Index im neuen Modus zu synchronisieren
+            // If there was a time, try to synchronize the index in the new mode.
             if (currentTimeStr) {
                 if (currentScaleMode === 'heat') {
-                    // Im Heat-Modus ist der Slider-Wert die Sekunden
+                    // In heat mode, the slider value is seconds.
                     timeSlider.value = timeToSeconds(currentTimeStr);
                 } else {
-                    // In anderen Modi ist der Slider-Wert der Index
+                    // In other modes, the slider value is the index.
                     const index = timeGroups.findIndex(g => g.time.replace(/:/g, '-') === currentTimeStr);
                     if (index !== -1) {
                         currentTimeIndex = index;
@@ -943,7 +943,7 @@
         timeSlider.oninput = () => {
             console.log('Slider input:', timeSlider.value, 'Mode:', currentScaleMode);
             if (currentScaleMode === 'heat' && !isSearching) {
-                // Im Heat-Modus ist der Slider-Wert die Sekunden des Tages (0-86399)
+                // In heat mode, the slider value is seconds of the day (0-86399).
                 const totalSeconds = parseInt(timeSlider.value);
                 const h = Math.floor(totalSeconds / 3600);
                 const m = Math.floor((totalSeconds % 3600) / 60);
@@ -952,7 +952,7 @@
                 
                 currentTimeDisplay.innerText = timeStr.replace(/-/g, ':');
                 
-                // Finde den nächstgelegenen Screenshot
+                // Find the nearest screenshot.
                 const nearest = findNearestTimeIndex(timeStr);
                 if (nearest !== null) {
                     currentTimeIndex = nearest;
@@ -1056,13 +1056,13 @@
                 return;
             }
 
-            // Erstelle einen Gradienten basierend auf den Zeitstempeln
+            // Create a gradient based on timestamps.
             const points = timeGroups.map(tg => {
                 const sec = timeToSeconds(tg.time.replace(/:/g, '-'));
                 return (sec / 86399) * 100;
             });
 
-            // Wir bauen einen Gradienten, der an den Stellen mit Daten blau ist
+            // Build a gradient that is blue at positions with data.
             let gradientParts = [];
             gradientParts.push('transparent 0%');
             
@@ -1089,7 +1089,7 @@
             const query = searchInput.value.toLowerCase().trim();
             currentSearchQuery = query;
 
-            // X-Button ein/ausblenden
+            // Show/hide X button.
             const searchClear = document.getElementById('search-clear');
             if (searchClear) {
                 searchClear.style.display = query.length > 0 ? 'block' : 'none';
@@ -1097,7 +1097,7 @@
 
             if (query.length === 0) {
                 if (isSearching) {
-                    // Merke uns den aktuell gewählten Zeitpunkt der Suche
+                    // Remember the currently selected search time.
                     let lastSearchTime = null;
                     let lastSearchDate = null;
                     if (timeGroups[currentTimeIndex]) {
@@ -1111,13 +1111,13 @@
                     timeGroups = []; // Reset until refreshUI loads correct data
                     pendingTargetTime = lastSearchTime;
 
-                    // Falls wir in der Suche ein Bild eines anderen Tages hatten, wechseln wir dorthin
+                    // If the search selected an image from another day, switch to that day.
                     if (lastSearchDate && lastSearchDate !== selectedDate) {
                         selectedDate = lastSearchDate;
                         renderDatePicker();
                     }
 
-                    // UI Sichtbarkeit zurücksetzen
+                    // Reset UI visibility.
                     searchResultsInfo.style.display = 'none';
                     searchResultsList.style.display = 'none';
                     datePicker.style.display = 'flex';
@@ -1144,7 +1144,7 @@
             datePicker.style.display = 'none';
             searchResultsList.style.display = 'flex';
             
-            // Bei Suche automatisch in Fit-Modus wechseln
+            // Automatically switch to fit mode when searching.
             if (currentScaleMode !== 'fit') {
                 currentScaleMode = 'fit';
             }
@@ -1158,7 +1158,7 @@
             searchResultsInfo.style.display = 'block';
             searchResultsInfo.innerText = translations.viewer.searching.active;
             
-            // Verstecke Kalender-Ladeanzeige während der Suche
+            // Hide calendar loading indicator during search.
             if (document.getElementById('date-picker-loading')) {
                 document.getElementById('date-picker-loading').style.display = 'none';
             }
@@ -1166,7 +1166,7 @@
             try {
                 const results = await ipcRenderer.invoke('search-metadata', query);
                 
-                // Race condition check: Sind wir noch bei dieser Suche und immer noch im Suchmodus?
+                // Race condition check: are we still on this search and still in search mode?
                 if (query !== currentSearchQuery || !isSearching) {
                     console.log('Search query changed or search cancelled, ignoring results for:', query);
                     return;
@@ -1223,7 +1223,7 @@
         async function scanAvailableDates() {
             console.log('--- Calendar Scan Start ---');
             
-            // Lade-Indikator anzeigen, falls er versteckt war UND wir nicht gerade suchen
+            // Show loading indicator if it was hidden and we are not currently searching.
             if (document.getElementById('date-picker-loading') && !isSearching) {
                 document.getElementById('date-picker-loading').style.display = 'block';
             }
@@ -1232,8 +1232,8 @@
                 const dates = await ipcRenderer.invoke('get-available-dates');
                 const newAvailableDates = new Set(dates);
                 
-                // Zusätzlich die Ordnerstruktur scannen für den Fall, dass noch nicht alles in der DB ist
-                // (wird seltener nötig sein, wenn Hintergrund-Indizierung läuft)
+                // Additionally scan the folder structure in case not everything is in the DB yet.
+                // (This should be needed less often when background indexing is running.)
                 if (currentConfigDir) {
                     const baseDir = path.join(currentConfigDir, 'screenRecorder');
                     if (fs.existsSync(baseDir)) {
@@ -1272,7 +1272,7 @@
         }
 
         function renderDatePicker() {
-            // Lade-Indikator ausblenden
+            // Hide loading indicator.
             const loadingIndicator = document.getElementById('date-picker-loading');
             if (loadingIndicator) {
                 loadingIndicator.style.display = 'none';
@@ -1284,7 +1284,7 @@
             let startYear = now.getFullYear();
             let startMonth = now.getMonth();
             
-            // Wenn wir verfügbare Daten haben, ermittle den ältesten Monat
+            // If data is available, determine the oldest month.
             if (availableDates.size > 0) {
                 const sortedDates = Array.from(availableDates).sort();
                 const oldestDate = new Date(sortedDates[0]);
@@ -1295,7 +1295,7 @@
             const currentYear = now.getFullYear();
             const currentMonth = now.getMonth();
 
-            // Erstelle Monate von heute rückwärts bis zum ältesten Datum
+            // Create months backward from today to the oldest date.
             let iterYear = currentYear;
             let iterMonth = currentMonth;
 
@@ -1347,7 +1347,7 @@
                     grid.appendChild(dh);
                 });
             } else {
-                // Fallback wenn Übersetzungen fehlen
+                // Fallback when translations are missing.
                 ['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su'].forEach(day => {
                     const dh = document.createElement('div');
                     dh.className = 'day-header';
@@ -1359,7 +1359,7 @@
             const firstDay = new Date(year, month, 1).getDay(); // 0 is Sunday
             const daysInMonth = new Date(year, month + 1, 0).getDate();
 
-            // Offset für Montag als ersten Tag
+            // Offset for Monday as the first day.
             let offset = firstDay === 0 ? 6 : firstDay - 1;
 
             for (let i = 0; i < offset; i++) {
@@ -1387,7 +1387,7 @@
         function selectDate(dateStr) {
             selectedDate = dateStr;
             renderDatePicker();
-            // Respektiere startView beim Datumswechsel
+            // Respect startView when changing dates.
             currentTimeIndex = (currentStartView === 'earliest') ? 0 : 999999;
             refreshUI().then(() => {
                 if (currentScaleMode === 'heat') {
@@ -1396,16 +1396,16 @@
             });
         }
 
-        // Da Tray und Viewer getrennte Prozesse sind, pollt der Viewer alle 30s nach neuen Bildern
+        // Since tray and viewer are separate processes, the viewer polls for new images every 30s.
         let lastScanTime = 0;
         setInterval(async () => {
             if (currentConfigDir && !isSearching) {
                 const now = Date.now();
                 const today = new Date().toISOString().split('T')[0];
                 
-                // Nur scannen wenn:
-                // 1. Der ausgewählte Tag HEUTE ist (wir erwarten neue Daten)
-                // 2. ODER wir seit 5 Minuten nicht mehr gescannt haben (allgemeiner Refresh)
+                // Scan only when:
+                // 1. The selected day is today (new data is expected).
+                // 2. Or we have not scanned for 5 minutes (general refresh).
                 if (selectedDate === today || (now - lastScanTime > 300000)) {
                     scanAvailableDates();
                     await refreshUI();
@@ -1419,7 +1419,7 @@
             
             console.log('Refreshing UI for date:', selectedDate);
             
-            // 1. Zuerst aus der Datenbank laden (schnell)
+            // 1. First load from the database (fast).
             let captures = [];
             try {
                 captures = await ipcRenderer.invoke('get-day-captures', selectedDate);
@@ -1437,8 +1437,8 @@
             const groups = {}; // { 'HH-mm-ss': { displayIndex: path } }
             let fileCount = 0;
 
-            // 2. Falls heute, ODER falls Datenbank leer ist, Dateisystem prüfen
-            // Ansonsten vertrauen wir der Datenbank (viel schneller)
+            // 2. Check the file system if today is selected or if the database is empty.
+            // Otherwise trust the database (much faster).
             if (selectedDate === today || captures.length === 0) {
                 const [year, month, day] = selectedDate.split('-');
                 const dayDir = path.join(currentConfigDir, 'screenRecorder', year, month, day);
@@ -1461,7 +1461,7 @@
                 }
             }
 
-            // Wenn wir Daten in der DB haben, diese bevorzugen/mischen
+            // If there is data in the DB, prefer/merge it.
             captures.forEach(c => {
                 const timePart = c.time.replace(/:/g, '-');
                 if (!groups[timePart]) {
@@ -1479,7 +1479,7 @@
                 return;
             }
             
-            // Performance: Nur UI updaten wenn sich die Dateianzahl oder der Pfad geändert hat
+            // Performance: update UI only when the file count or path changed.
             const currentRefreshKey = `${selectedDate}-${fileCount}`;
             if (currentRefreshKey === lastRefreshKey) {
                 return;
@@ -1488,7 +1488,7 @@
 
             const sortedTimes = Object.keys(groups).sort();
             
-            // Falls währenddessen die Suche gestartet wurde, hier abbrechen
+            // If a search was started in the meantime, abort here.
             if (isSearching) return;
 
             timeGroups = sortedTimes.map(t => ({
@@ -1498,7 +1498,7 @@
 
             console.log(`Initial display for ${selectedDate}, total timeGroups: ${timeGroups.length}`);
             if (timeGroups.length > 0) {
-                // Position bestimmen
+                // Determine position.
                 if (pendingTargetTime) {
                     const idx = timeGroups.findIndex(g => g.time === pendingTargetTime);
                     if (idx !== -1) {
@@ -1527,13 +1527,13 @@
             const group = timeGroups[currentTimeIndex];
             console.log('displayCurrentTimeGroup - Index:', currentTimeIndex, 'Group:', group);
             
-            // UI sofort aktualisieren (Bilder)
+            // Update UI immediately (images).
             if (group) {
-                // Wenn wir suchen, müssen wir das Datum aus der Gruppe nehmen, sonst das globale selectedDate
+                // When searching, take the date from the group; otherwise use the global selectedDate.
                 const effectiveDate = isSearching ? group.date : selectedDate;
 
                 if (currentScaleMode === 'heat' && !isSearching) {
-                    // Im Heat-Modus zeigt das Display die Zeit vom Slider, nicht die Zeit des nächsten Screenshots
+                    // In heat mode, the display shows the slider time, not the time of the next screenshot.
                     const totalSeconds = parseInt(timeSlider.value);
                     const h = Math.floor(totalSeconds / 3600);
                     const m = Math.floor((totalSeconds % 3600) / 60);
@@ -1543,7 +1543,7 @@
                     currentTimeDisplay.innerText = isSearching ? formatDisplayDateTime(effectiveDate, group.time) : group.time;
                 }
                 
-                // Setze CSS Variable für Grid Spalten
+                // Set CSS variable for grid columns.
                 const displayCount = Object.keys(group.files).length;
                 content.style.setProperty('--display-count', displayCount);
                 content.classList.toggle('single-display', displayCount === 1);
@@ -1562,19 +1562,19 @@
                     div.appendChild(label);
 
                     const img = document.createElement('img');
-                    // Pfad für Electron file:// Protokoll vorbereiten
+                    // Prepare path for Electron's file:// protocol.
                     let webPath = fullPath.replace(/\\/g, '/');
-                    // Für Windows Pfade wie C:/... muss file:///C:/... verwendet werden
+                    // For Windows paths such as C:/..., file:///C:/... must be used.
                     let finalUrl;
                     if (webPath.match(/^[a-zA-Z]:/)) {
-                        // Absoluter Windows-Pfad: Laufwerksbuchstabe nicht kodieren
+                        // Absolute Windows path: do not encode the drive letter.
                         const drive = webPath.substring(0, 2); // "C:"
                         const rest = webPath.substring(2);
                         finalUrl = `file:///${drive}${rest.split('/').map(s => encodeURIComponent(s)).join('/')}`;
                     } else {
-                        // Netzwerkpfad oder relativer Pfad
+                        // Network path or relative path.
                         if (webPath.startsWith('//')) {
-                            // UNC Pfad
+                            // UNC path.
                             finalUrl = `file:${webPath.split('/').map(s => encodeURIComponent(s)).join('/')}`;
                         } else {
                             finalUrl = `file://${webPath.split('/').map(s => encodeURIComponent(s)).join('/')}`;
@@ -1588,7 +1588,7 @@
                         showContextMenu(fullPath, e.clientX, e.clientY);
                     };
                     
-                    // Setze Flex-Basis basierend auf Monitorbreite falls verfügbar
+                    // Set flex basis based on monitor width when available.
                     if (displaysInfo && displaysInfo[displayIndex]) {
                         const dInfo = displaysInfo[displayIndex];
                         const width = dInfo.bounds.width;
@@ -1613,7 +1613,7 @@
                     const msg = (translations.viewer && translations.viewer.meta) ? translations.viewer.meta.no_screenshot_at_time : 'Kein Screenshot für diese Zeit vorhanden.';
                     content.innerHTML = `<p style="color: #666; padding: 20px;">${msg}</p>`;
                 }
-                // Metadaten-Listen leeren
+                // Clear metadata lists.
                 titlesList.innerHTML = '';
                 filesList.innerHTML = '';
                 urlsList.innerHTML = '';
@@ -1622,14 +1622,14 @@
                 return;
             }
             
-            // Lade-Status für Metadaten anzeigen
+            // Show loading status for metadata.
             titlesList.innerHTML = `<tr><td style="color: #888; font-style: italic;">${translations.viewer.meta.loading_meta}</td></tr>`;
             filesList.innerHTML = `<tr><td style="color: #888; font-style: italic;">${translations.viewer.meta.loading_data}</td></tr>`;
             urlsList.innerHTML = `<tr><td colspan="3" style="color: #888; font-style: italic;">${translations.viewer.meta.loading_urls}</td></tr>`;
             callsList.innerHTML = `<tr><td colspan="2" style="color: #888; font-style: italic;">${translations.viewer.meta.loading_meta}</td></tr>`;
             ocrTextDisplay.innerText = translations.viewer.meta.loading_ocr;
 
-            // Lade Metadaten aus der Datenbank
+            // Load metadata from the database.
             try {
                 const groupTime = group.time;
                 const effectiveDate = isSearching ? group.date : selectedDate;
@@ -1638,17 +1638,17 @@
                 
                 console.log('Fetching meta for:', effectiveDate, timeKey);
 
-                // Versuche zuerst aus dem Cache zu laden
+                // Try loading from cache first.
                 if (!isSearching && dayCapturesCache && dayCapturesCache[timeKey]) {
                     metaData = dayCapturesCache[timeKey];
                     console.log('Meta from cache:', metaData);
                 } else {
-                    // Fallback auf Einzelabfrage (z.B. bei Suche)
+                    // Fallback to single query (for example during search).
                     metaData = await ipcRenderer.invoke('get-capture-meta', { date: effectiveDate, time: timeKey });
                     console.log('Meta from IPC:', metaData);
                 }
 
-                // Prüfen, ob wir immer noch bei der gleichen Gruppe sind
+                // Check whether we are still on the same group.
                 const currentGroup = timeGroups[currentTimeIndex];
                 if (!currentGroup || currentGroup.time !== groupTime) {
                     console.log('Meta fetch returned, but index/time changed. Skipping UI update.');
@@ -1657,7 +1657,7 @@
 
                 const meta = metaData ? (metaData.meta || metaData) : null;
                 
-                // Vor dem Befüllen die Lade-Indikatoren entfernen
+                // Remove loading indicators before filling content.
                 titlesList.innerHTML = '';
                 filesList.innerHTML = '';
                 urlsList.innerHTML = '';
@@ -1705,11 +1705,11 @@
                         filesList.appendChild(tr);
                     }
 
-                    // URLs anzeigen
+                    // Show URLs.
                     const urls = Array.isArray(meta.urls) ? meta.urls : (typeof meta.urls === 'string' ? meta.urls.split(' | ') : []);
                     if (urls.length > 0) {
                         urls.forEach(u => {
-                            // In der neuen URL-Tabelle anzeigen
+                            // Show in the new URL table.
                             const trUrl = document.createElement('tr');
                             trUrl.innerHTML = `
                                 <td style="color: #666;">${group.time.replace(/-/g, ':')}</td>
@@ -1724,7 +1724,7 @@
                         urlsList.appendChild(tr);
                     }
 
-                    // Anrufe anzeigen
+                    // Show calls.
                     const calls = Array.isArray(meta.calls) ? meta.calls : (typeof meta.calls === 'string' ? meta.calls.split(' | ') : []);
                     if (calls.length > 0) {
                         calls.forEach(c => {
@@ -1739,7 +1739,7 @@
                     }
                 } else {
                     console.warn('Meta not found in DB for:', effectiveDate, timeKey);
-                    // Lade-Status war schon weg, jetzt Fehlermeldung setzen
+                    // Loading status was already gone; set error message now.
                     titlesList.innerHTML = '';
                     const tr = document.createElement('tr');
                     tr.innerHTML = `<td style="color: #d9534f;">${translations.viewer.meta.not_found}</td>`;
@@ -1758,7 +1758,7 @@
                 ocrTextDisplay.innerText = translations.viewer.meta.not_found + ": " + e.message;
             }
 
-            // Setze CSS Variable für Grid Spalten
+            // Set CSS variable for grid columns.
             const displayCount = Object.keys(group.files).length;
             content.style.setProperty('--display-count', displayCount);
         }
@@ -1773,8 +1773,8 @@
         }
 
         function showContextMenu(filePath, x, y) {
-            // Einfaches Custom-Kontextmenü oder direkt Electron Menu via IPC?
-            // Da wir im Renderer sind, senden wir ein Signal an den Main-Prozess
+            // Simple custom context menu or direct Electron menu via IPC?
+            // Since this is the renderer, send a signal to the main process.
             ipcRenderer.send('show-item-context-menu', { filePath, x, y });
         }
 
@@ -1899,7 +1899,7 @@
         function renderMarkdown(md) {
             if (!md) return;
             
-            // Einfacher Markdown Parser
+            // Simple Markdown parser.
             let html = md
                 // Headlines
                 .replace(/^### (.*$)/gim, '<h3>$1</h3>')
@@ -1915,7 +1915,7 @@
                 .replace(/^\s*-\s+(.*)$/gim, '<li>$1</li>')
                 .replace(/(<li>.*<\/li>)/sim, '<ul>$1</ul>');
 
-            // Tabellen (sehr einfach gehalten)
+            // Tables (kept very simple).
             const lines = html.split('\n');
             let inTable = false;
             let tableHtml = '';
@@ -1943,7 +1943,7 @@
             if (inTable) newLines.push(tableHtml + '</table>');
             
             html = newLines.join('\n')
-                // Zeilenumbrüche für Nicht-Listen/Tabellen
+                // Line breaks for non-list/table content.
                 .replace(/\n\n/g, '<br><br>');
 
             aiResultMarkdown.innerHTML = html;
@@ -1961,7 +1961,7 @@
         }
 
         function copyAiResult() {
-            // Wir kopieren den rohen Text aus der Textarea
+            // Copy the raw text from the textarea.
             const textToCopy = aiResultDisplay.value;
             const tempTexarea = document.createElement('textarea');
             tempTexarea.value = textToCopy;

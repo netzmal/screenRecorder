@@ -2,16 +2,16 @@ const { ipcRenderer } = require('electron');
 const i18n = require('../shared/i18n');
 const { getLanguage } = require('../shared/config');
 
-// Sprache initialisieren
+// Initialize language.
 const lang = getLanguage();
 i18n.init(lang);
 
-// Parameter aus URL prüfen
+// Check URL parameters.
 const urlParams = new URLSearchParams(window.location.search);
 const isBlackMode = urlParams.get('black') === '1';
 
 if (isBlackMode) {
-    // Alles verstecken für schwarzen Modus
+    // Hide everything for black mode.
     document.addEventListener('DOMContentLoaded', () => {
         const container = document.getElementById('container');
         const overlay = document.getElementById('overlay');
@@ -20,7 +20,7 @@ if (isBlackMode) {
         document.body.style.backgroundColor = 'black';
     });
 } else {
-    // Labels übersetzen
+    // Translate labels.
     document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('label-pending').innerText = i18n.t('screensaver.todo');
         document.getElementById('label-processed').innerText = i18n.t('screensaver.done');
@@ -29,10 +29,11 @@ if (isBlackMode) {
 }
 
 let initialProcessedCount = -1;
+let initialPendingCount = -1;
 let lastProcessedCount = -1;
 let lastPendingCount = -1;
 let isOcrProcessing = false;
-let visualQueue = 0; // Anzahl der Bilder, die noch visuell fliegen sollen
+let visualQueue = 0; // Number of images that should still fly visually.
 let isAnimating = false;
 let appVersion = '';
 
@@ -47,7 +48,7 @@ function updateFooterStatus() {
     statusEl.innerText = `${time} | Screen Recorder${appVersion ? ' V' + appVersion : ''}`;
 }
 
-// OCR Status vom Main Prozess (nur auf Hauptbildschirm)
+// OCR status from the main process (primary display only).
 if (!isBlackMode) {
     const ocrDetailsEl = document.getElementById('ocr-details');
     
@@ -63,7 +64,7 @@ if (!isBlackMode) {
                     visualQueue += data.currentBatch || 1;
                     startNextAnimation();
                     
-                    // Details anzeigen
+                    // Show details.
                     if (ocrDetailsEl) {
                         ocrDetailsEl.style.display = 'block';
                         const engine = data.engine || 'OCR';
@@ -107,7 +108,7 @@ if (!isBlackMode) {
                 if (ocrDetailsEl) {
                     ocrDetailsEl.style.display = 'none';
                 }
-                // Sofort Stats updaten, da ein Batch fertig ist
+                // Update stats immediately because a batch finished.
                 updateStats();
             }
         } catch (err) {
@@ -127,11 +128,11 @@ async function startNextAnimation() {
     
     isAnimating = false;
     
-    // Kleiner Delay vor dem nächsten
+    // Short delay before the next one.
     setTimeout(startNextAnimation, 500);
 }
 
-// Mausbewegung erkennen
+// Detect mouse movement.
 let lastMouseX = -1;
 let lastMouseY = -1;
 document.addEventListener('mousemove', (e) => {
@@ -198,7 +199,7 @@ function createDocumentElement() {
 function updateStackVisuals(container, count, isPending) {
     if (!isPending) return;
     
-    // Sicherstellen, dass nur ein Ordner-Icon existiert (kein Stapel mehr)
+    // Ensure only one folder icon exists (no stack anymore).
     if (container.children.length === 0 || !container.querySelector('.folder-icon')) {
         container.innerHTML = `<div class="folder-container">${FOLDER_ICON_SVG}</div>`;
     }
@@ -212,7 +213,7 @@ function flyDocument() {
         const startX = leftRect.left + leftRect.width / 2;
         const startY = leftRect.top + leftRect.height / 2;
         
-        // Die Zielposition für die "Verarbeitung" ist auf der rechten Seite mittig
+        // The target position for "processing" is centered on the right side.
         const processX = containerRect.width * 0.75;
         const processY = containerRect.height / 2;
         
@@ -225,28 +226,28 @@ function flyDocument() {
         
         document.body.appendChild(doc);
         
-        // 1. Flug zur Mitte-Rechts + Vergrößern
+        // 1. Fly to the center-right and enlarge.
         setTimeout(() => {
             doc.classList.add('processing');
             doc.style.left = processX + 'px';
             doc.style.top = processY + 'px';
-            doc.style.transform = `translate(-50%, -50%) rotate(0deg) scale(3.5)`; // Noch etwas größer für mehr Fokus
+            doc.style.transform = `translate(-50%, -50%) rotate(0deg) scale(3.5)`; // Slightly larger for more focus.
         }, 50);
 
-        // 2. Warten (solange OCR läuft, aber mindestens 1.5s und maximal 10s für die Animation)
+        // 2. Wait while OCR is running, but at least 1.5s and at most 10s for the animation.
         const waitStartTime = Date.now();
         const checkOcr = setInterval(() => {
             const elapsed = Date.now() - waitStartTime;
             
-            // Wenn OCR fertig ist ODER wir ein Mindesttimeout erreicht haben
+            // When OCR is finished or the minimum timeout has been reached.
             if ((!isOcrProcessing && elapsed > 1500) || elapsed > 4000) {
                 clearInterval(checkOcr);
                 
-                // 3. Nach hinten verschwinden (an der gleichen Position)
+                // 3. Disappear backward (at the same position).
                 doc.classList.remove('processing');
                 doc.classList.add('disappearing');
                 
-                // Wir behalten die Position bei, verkleinern aber auf 0 (wie in CSS definiert)
+                // Keep the position, but shrink to 0 (as defined in CSS).
                 
                 setTimeout(() => {
                     doc.remove();
@@ -257,33 +258,31 @@ function flyDocument() {
     });
 }
 
+function formatPercent(value) {
+    if (!Number.isFinite(value)) return '0%';
+
+    const clamped = Math.max(0, Math.min(100, value));
+    if (clamped > 0 && clamped < 1) return `${clamped.toFixed(2)}%`;
+    if (clamped < 10 && !Number.isInteger(clamped)) return `${clamped.toFixed(1)}%`;
+    return `${Math.round(clamped)}%`;
+}
+
 async function updateStats() {
     try {
         const stats = await ipcRenderer.invoke('get-ocr-stats');
         
         if (initialProcessedCount === -1) {
             initialProcessedCount = stats.processed;
+            initialPendingCount = stats.pending;
         }
         
         const sessionProcessed = Math.max(0, stats.processed - initialProcessedCount);
+        const sessionTotal = initialPendingCount > 0 ? initialPendingCount : stats.total;
+        const processedPercent = sessionTotal > 0 ? (sessionProcessed / sessionTotal) * 100 : 0;
+        const pendingPercent = sessionTotal > 0 ? (stats.pending / sessionTotal) * 100 : 0;
         
-        // Prozentanzeige mit einer Nachkommastelle, wenn unter 10%
-        let pendingPercentText = `${stats.pendingPercent}%`;
-        let processedPercentText = `${stats.processedPercent}%`;
-        
-        if (stats.total > 0 && stats.processedPercent < 10) {
-            const preciseProcessed = (stats.processed / stats.total) * 100;
-            const precisePending = (stats.pending / stats.total) * 100;
-            if (preciseProcessed > 0 && preciseProcessed < 1) {
-                processedPercentText = `${preciseProcessed.toFixed(2)}%`;
-            } else if (preciseProcessed < 10) {
-                processedPercentText = `${preciseProcessed.toFixed(1)}%`;
-            }
-            
-            if (precisePending > 90 && precisePending < 100) {
-                pendingPercentText = `${precisePending.toFixed(1)}%`;
-            }
-        }
+        const pendingPercentText = formatPercent(pendingPercent);
+        const processedPercentText = formatPercent(processedPercent);
 
         statsPendingEl.innerText = pendingPercentText;
         statsProcessedEl.innerText = processedPercentText;
@@ -291,12 +290,12 @@ async function updateStats() {
         countPendingEl.innerText = `${stats.pending.toLocaleString()} ${i18n.t('screensaver.documents')}`;
         countProcessedEl.innerText = `${sessionProcessed.toLocaleString()} ${i18n.t('screensaver.documents')}`;
         
-        // Stapel-Visualisierung (Links: ein Ordner, Rechts: kein Stapel)
+        // Stack visualization (left: one folder, right: no stack).
         updateStackVisuals(stackPendingEl, stats.pending, true);
         
-        // Wenn OCR nicht läuft, aber wir noch Dokumente zum Fliegen haben (aus einem vorherigen Batch)
-        // oder wenn wir einfach im Leerlauf sind und Pending Dokumente haben, 
-        // füllen wir die Queue ein bisschen auf, um Aktivität zu zeigen.
+        // If OCR is not running but documents from a previous batch still need to fly,
+        // or if we are idle and still have pending documents,
+        // fill the queue slightly to show activity.
         if (!isOcrProcessing && visualQueue === 0 && stats.pending > 0) {
             visualQueue = Math.min(stats.pending, 3);
             startNextAnimation();
@@ -309,11 +308,11 @@ async function updateStats() {
     }
 }
 
-// Initialer Aufruf
+// Initial call.
 if (!isBlackMode) {
     updateFooterStatus();
     setInterval(updateFooterStatus, 1000);
     updateStats();
-    // Alle 2 Sekunden Stats prüfen
+    // Check stats every 2 seconds.
     setInterval(updateStats, 2000);
 }

@@ -7,7 +7,7 @@ const i18n = require('./i18n');
 let db;
 
 /**
- * Macht Pfade in einem Objekt (Files JSON) relativ zum konfigurierten Screenshot-Verzeichnis.
+ * Makes paths in an object (files JSON) relative to the configured screenshot directory.
  */
 function parseMetadata(str) {
     if (!str) return [];
@@ -40,7 +40,7 @@ function makePathsRelative(files) {
 }
 
 /**
- * Macht Pfade in einem Objekt (Files JSON) absolut basierend auf dem konfigurierten Screenshot-Verzeichnis.
+ * Makes paths in an object (files JSON) absolute based on the configured screenshot directory.
  */
 function makePathsAbsolute(files) {
     if (!files) return {};
@@ -65,16 +65,16 @@ function initDb() {
     const appDataDir = getBaseDir();
     const dbPath = path.join(appDataDir, 'metadata.db');
 
-    // Logging für Fehlersuche (wird in Electron-Konsole sichtbar)
+    // Logging for troubleshooting (visible in the Electron console).
     console.log(`Initializing database at: ${dbPath}`);
 
-    // Sicherstellen, dass der Ordner existiert
+    // Ensure the folder exists.
     const dbDir = path.dirname(dbPath);
     if (!fs.existsSync(dbDir)) {
         fs.mkdirSync(dbDir, { recursive: true });
     }
 
-    // Migration der DB aus dem Bilder-Verzeichnis (falls sie noch dort liegt)
+    // Migrate the DB from the Pictures directory if it is still there.
     const screenshotDir = getConfigDir();
     const oldDbPathInPictures = path.join(screenshotDir, 'screenRecorder', 'metadata.db');
     const oldDbPathInPicturesRoot = path.join(screenshotDir, 'metadata.db');
@@ -85,7 +85,7 @@ function initDb() {
                 console.log(`Migrating database from ${oldPath} to ${dbPath}`);
                 fs.copyFileSync(oldPath, dbPath);
                 try {
-                    // Wir löschen die alte Datei, da sie jetzt im AppData liegen soll
+                    // Delete the old file because it should now be in AppData.
                     fs.unlinkSync(oldPath);
                 } catch (e) {
                     console.error(`Konnte alte DB unter ${oldPath} nicht löschen:`, e);
@@ -96,7 +96,7 @@ function initDb() {
         }
     });
 
-    // Migration aus anderen möglichen AppData-Orten (tray/viewer) - zur Sicherheit behalten
+    // Migration from other possible AppData locations (tray/viewer), kept as a safety net.
     const otherDbPaths = [
         path.join(appDataDir, '..', 'screen-recorder-tray', 'metadata.db'),
         path.join(appDataDir, '..', 'screen-recorder-viewer', 'metadata.db')
@@ -119,7 +119,7 @@ function initDb() {
 
     db = new Database(dbPath);
 
-    // Initialisiere Einstellungen/Versionierung
+    // Initialize settings/versioning.
     db.exec(`
         CREATE TABLE IF NOT EXISTS settings (
             key TEXT PRIMARY KEY,
@@ -127,33 +127,33 @@ function initDb() {
         )
     `);
 
-    // Basis-Tabelle erstellen falls sie noch nicht existiert (muss vor Migrationen geschehen!)
+    // Create the base table if it does not exist yet (must happen before migrations).
     db.exec(`
         CREATE TABLE IF NOT EXISTS captures (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             date TEXT,          -- YYYY-MM-DD
             time TEXT,          -- HH-mm-ss
-            timestamp INTEGER,   -- Unix Timestamp für Sortierung
-            titles TEXT,        -- Fenstertitel (kommagetrennt oder JSON)
-            activeWindow TEXT,   -- Aktives Fenster
-            openFiles TEXT,      -- Offene Dateien (Explorer)
+            timestamp INTEGER,   -- Unix timestamp for sorting
+            titles TEXT,        -- Window titles (comma-separated or JSON)
+            activeWindow TEXT,   -- Active window
+            openFiles TEXT,      -- Open files (Explorer)
             urls TEXT,           -- Browser URLs
-            calls TEXT,          -- Anrufinformationen (3CX, Windows Phone API)
-            ocrText TEXT,       -- Erkannter Text
-            files JSON,         -- Pfade zu den Bildern { "0": "...", "1": "..." }
+            calls TEXT,          -- Call information (3CX, Windows Phone API)
+            ocrText TEXT,       -- Recognized text
+            files JSON,         -- Paths to images { "0": "...", "1": "..." }
             UNIQUE(date, time)
         );
         CREATE INDEX IF NOT EXISTS idx_captures_date ON captures(date);
         CREATE INDEX IF NOT EXISTS idx_captures_timestamp ON captures(timestamp);
     `);
 
-    // Aktuelle Version abrufen
+    // Get the current version.
     let currentVersion = 0;
     const versionRow = db.prepare("SELECT value FROM settings WHERE key = 'schema_version'").get();
     if (versionRow) {
         currentVersion = parseInt(versionRow.value);
     } else {
-        // Wir prüfen welche Spalten da sind um die Startversion zu raten
+        // Check which columns exist to infer the starting version.
         const tableInfo = db.prepare("PRAGMA table_info(captures)").all();
         const columns = tableInfo.map(c => c.name);
         if (columns.includes('urls')) {
@@ -166,7 +166,7 @@ function initDb() {
         db.prepare("INSERT INTO settings (key, value) VALUES ('schema_version', ?)").run(currentVersion.toString());
     }
 
-    // Definition der Migrationen
+    // Migration definitions.
     const migrations = [
         {
             version: 1,
@@ -205,7 +205,7 @@ function initDb() {
                 const tableInfo = db.prepare("PRAGMA table_info(captures)").all();
                 if (!tableInfo.map(c => c.name).includes('calls')) {
                     db.exec("ALTER TABLE captures ADD COLUMN calls TEXT");
-                    // Index aktualisieren
+                    // Update index.
                     db.exec(`
                         DROP INDEX IF EXISTS idx_captures_search;
                         CREATE INDEX idx_captures_search ON captures(titles, activeWindow, ocrText, openFiles, urls, calls);
@@ -224,8 +224,8 @@ function initDb() {
             version: 6,
             description: "Reset failed OCR headers from broken path matching",
             run: (db) => {
-                // Setzt alle Einträge zurück, die nur aus Headern ohne echten Text bestehen (Länge < 100 Zeichen und Header-Pattern)
-                // Das bereinigt den Fehler, bei dem Pfad-Mismatches zu leeren Ergebnissen führten
+                // Reset entries that only consist of headers without real text (length < 100 characters and header pattern).
+                // This fixes the issue where path mismatches produced empty results.
                 db.exec("UPDATE captures SET ocrText = NULL WHERE length(ocrText) < 100 AND (ocrText LIKE '--- Screen %' OR ocrText LIKE '--- Display %')");
             }
         },
@@ -284,18 +284,18 @@ function initDb() {
                                 return;
                             }
 
-                            // Prüfe ob Datei existiert
+                            // Check whether the file exists.
                             let absPath = path.isAbsolute(val) ? val : path.join(configDir, val);
                             
                             if (!fs.existsSync(absPath)) {
                                 const basename = path.basename(val);
                                 
-                                // Extrahiere YYYY/MM/DD/screenX
+                                // Extract YYYY/MM/DD/screenX.
                                 const match = val.match(/(\d{4})[\\/](\d{2})[\\/](\d{2})[\\/](screen\d+)/);
                                 if (match) {
                                     const [_, year, month, day, screen] = match;
                                     
-                                    // Strategie 1: Pfad mit 'screenRecorder' Präfix
+                                    // Strategy 1: path with the 'screenRecorder' prefix.
                                     const expectedRelPath = path.join('screenRecorder', year, month, day, screen, basename);
                                     if (fs.existsSync(path.join(configDir, expectedRelPath))) {
                                         newFiles[key] = expectedRelPath;
@@ -303,7 +303,7 @@ function initDb() {
                                         return;
                                     }
 
-                                    // Strategie 2: Pfad ohne 'screenRecorder' Präfix
+                                    // Strategy 2: path without the 'screenRecorder' prefix.
                                     const expectedRelPath2 = path.join(year, month, day, screen, basename);
                                     if (fs.existsSync(path.join(configDir, expectedRelPath2))) {
                                         newFiles[key] = expectedRelPath2;
@@ -326,7 +326,7 @@ function initDb() {
         }
     ];
 
-    // Migrationen anwenden
+    // Apply migrations.
     migrations.sort((a, b) => a.version - b.version).forEach(m => {
         if (m.version > currentVersion) {
             console.log(`Applying migration v${m.version}: ${m.description}`);
@@ -343,7 +343,7 @@ function initDb() {
         }
     });
 
-    // Falls die Version noch 0 ist, auf aktuellste Version setzen
+    // If the version is still 0, set it to the latest version.
     if (currentVersion === 0) {
         const latestVersion = migrations.length > 0 ? Math.max(...migrations.map(m => m.version)) : 0;
         db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('schema_version', ?)").run(latestVersion.toString());
@@ -355,7 +355,7 @@ function initDb() {
 function saveCapture(data) {
     const db = initDb();
     
-    // Wir prüfen welche Felder übergeben wurden, um Teil-Updates (z.B. nur OCR) zu ermöglichen
+    // Check which fields were provided to allow partial updates (for example OCR only).
     const hasTitles = data.titles !== undefined;
     const hasActiveWindow = data.activeWindow !== undefined;
     const hasOpenFiles = data.openFiles !== undefined;
@@ -371,7 +371,7 @@ function saveCapture(data) {
     const calls = hasCalls ? (Array.isArray(data.calls) ? data.calls.join(' | ') : data.calls) : '';
     const ocrText = hasOcrText ? data.ocrText : null;
     
-    // Pfade relativ speichern
+    // Store paths as relative paths.
     let filesToSave = data.files || {};
     if (hasFiles) {
         filesToSave = makePathsRelative(filesToSave);
@@ -403,7 +403,7 @@ function saveCapture(data) {
     const result = insert.run(bindParams);
 
     if (result.changes === 0) {
-        // Falls bereits existiert, prüfen ob Update nötig
+        // If it already exists, check whether an update is needed.
         const existingSql = 'SELECT titles, activeWindow, openFiles, urls, calls, ocrText, files FROM captures WHERE date = ? AND time = ?';
         const existing = db.prepare(existingSql).get(data.date, data.time);
         
@@ -411,7 +411,7 @@ function saveCapture(data) {
             let needsUpdate = false;
             const updateParams = { ...bindParams };
 
-            // Nur Felder updaten, die im data-Objekt enthalten sind UND sich geändert haben
+            // Update only fields that are present in the data object and have changed.
             if (hasTitles && existing.titles !== titles) { needsUpdate = true; } else { updateParams.titles = existing.titles; }
             if (hasActiveWindow && existing.activeWindow !== activeWindow) { needsUpdate = true; } else { updateParams.activeWindow = existing.activeWindow; }
             if (hasOpenFiles && existing.openFiles !== openFiles) { needsUpdate = true; } else { updateParams.openFiles = existing.openFiles; }
@@ -478,7 +478,7 @@ function searchCaptures(query) {
         return {
             ...row,
             files: makePathsAbsolute(parsedFiles),
-            // Mapping für Viewer Kompatibilität
+            // Mapping for viewer compatibility.
             meta: {
                 titles: parseMetadata(row.titles),
                 activeWindow: row.activeWindow,
@@ -683,9 +683,9 @@ function getRandomOcrCaptures(limit = 10, processed = true) {
 }
 
 /**
- * Holt eine Liste von Captures, die noch kein OCR haben.
+ * Gets a list of captures that do not have OCR yet.
  * @param {number} limit 
- * @returns {Array} Liste der Captures mit absoluten Pfaden
+ * @returns {Array} List of captures with absolute paths.
  */
 function getPendingOcrCaptures(limit = 100) {
     try {
@@ -713,7 +713,7 @@ function getPendingOcrCaptures(limit = 100) {
 }
 
 /**
- * Aktualisiert den OCR-Text eines Captures.
+ * Updates the OCR text of a capture.
  */
 function updateOcrText(id, ocrText) {
     try {
@@ -785,7 +785,7 @@ function getDaySummary(date, lang = null) {
             lastApp = app;
         }
 
-        // Anrufe hinzufügen
+        // Add calls.
         if (row.calls && row.calls.length > 0) {
             const calls = row.calls.split(' | ');
             calls.forEach(call => {
@@ -793,7 +793,7 @@ function getDaySummary(date, lang = null) {
             });
         }
 
-        // URLs hinzufügen
+        // Add URLs.
         if (row.urls && row.urls.length > 0) {
             const urls = row.urls.split(' | ');
             urls.forEach(url => {
@@ -801,7 +801,7 @@ function getDaySummary(date, lang = null) {
             });
         }
 
-        // Offene Dateien hinzufügen (nur wenn relevant für den Zeitstempel)
+        // Add open files (only when relevant for the timestamp).
         if (row.openFiles && row.openFiles.length > 0) {
             const files = row.openFiles.split(' | ');
             files.forEach(file => {
@@ -809,7 +809,7 @@ function getDaySummary(date, lang = null) {
             });
         }
         
-        // OCR Snippets hinzufügen, falls vorhanden und nicht zu lang
+        // Add OCR snippets when present and not too long.
         if (row.ocrText && row.ocrText.length > 20) {
             const cleanOcr = row.ocrText.replace(/--- Display \d+ ---\n/g, '').substring(0, 200).replace(/\n/g, ' ');
             if (cleanOcr.trim().length > 0) {
