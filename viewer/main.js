@@ -247,34 +247,48 @@ app.whenReady().then(() => {
     }
 });
 
-ipcMain.on('update-screensaver-settings', (event, { enabled, timeoutSeconds, requirePassword }) => {
-    // When packaged, shared is either outside the asar or inside it.
-    // Use path.join(__dirname, '..', 'shared', 'screensaver-helper.ps1').
-    // Electron asar normally does not automatically extract files for exec.
-    // But .ps1 files should be readable.
+/**
+ * Wendet die Bildschirmschoner-Einstellungen im System (Windows-Registry) an.
+ */
+function applyScreensaverSettings(enabled, timeoutSeconds, requirePassword) {
     let scriptPath = path.join(__dirname, '..', 'shared', 'screensaver-helper.ps1');
     if (app.isPackaged) {
         scriptPath = scriptPath.replace('app.asar', 'app.asar.unpacked');
     }
     const exePath = process.execPath;
     
-    // In PowerShell, quote the script path correctly.
     const secureArg = requirePassword ? '-secure' : '';
-    const cmd = `powershell.exe -NoProfile -ExecutionPolicy Bypass -File "${scriptPath}" -exePath "${exePath}" -timeoutSeconds ${timeoutSeconds} ${secureArg} ${enabled ? '-enable' : ''}`;
+    const timeout = parseInt(timeoutSeconds) || 300;
+
+    const cmd = `powershell.exe -NoProfile -ExecutionPolicy Bypass -File "${scriptPath}" -exePath "${exePath}" -timeoutSeconds ${timeout} ${secureArg} ${enabled ? '-enable' : ''}`;
     
     console.log('Running screensaver update command:', cmd);
     
-    exec(cmd, (error, stdout, stderr) => {
-        if (error) {
-            console.error('Failed to update screensaver settings:', error);
-            event.reply('screensaver-settings-updated', { success: false, error: stderr || error.message });
-        } else {
-            console.log('Screensaver settings updated:', stdout);
-            setScreensaverSystemEnabled(enabled);
-            setScreensaverTimeout(timeoutSeconds);
-            setScreensaverRequirePassword(!!requirePassword);
-            event.reply('screensaver-settings-updated', { success: true, message: stdout, enabled });
-        }
+    return new Promise((resolve) => {
+        exec(cmd, (error, stdout, stderr) => {
+            if (error) {
+                console.error('Failed to update screensaver settings:', error);
+                resolve({ success: false, error: stderr || error.message });
+            } else {
+                console.log('Screensaver settings updated:', stdout);
+                resolve({ success: true, message: stdout });
+            }
+        });
+    });
+}
+
+ipcMain.on('update-screensaver-settings', async (event, { enabled, timeoutSeconds, requirePassword }) => {
+    const result = await applyScreensaverSettings(enabled, timeoutSeconds, requirePassword);
+    
+    if (result.success) {
+        setScreensaverSystemEnabled(enabled);
+        setScreensaverTimeout(timeoutSeconds);
+        setScreensaverRequirePassword(!!requirePassword);
+    }
+    
+    event.reply('screensaver-settings-updated', { 
+        ...result,
+        enabled: enabled
     });
 });
 
@@ -860,6 +874,15 @@ ipcMain.on('save-config', (event, data) => {
         if (data.screensaverSystemEnabled !== undefined) setScreensaverSystemEnabled(data.screensaverSystemEnabled);
         if (data.screensaverTimeout !== undefined) setScreensaverTimeout(parseInt(data.screensaverTimeout));
         if (data.screensaverRequirePassword !== undefined) setScreensaverRequirePassword(data.screensaverRequirePassword);
+        
+        // Wenn der Screensaver bereits im System registriert ist, aktualisieren wir die Registry-Werte sofort.
+        if (getScreensaverSystemEnabled()) {
+            applyScreensaverSettings(
+                true, 
+                getScreensaverTimeout(), 
+                getScreensaverRequirePassword()
+            );
+        }
         
         if (mainWindow) {
             mainWindow.webContents.send('config-updated', data);

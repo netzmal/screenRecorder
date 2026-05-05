@@ -10,6 +10,7 @@ A modular system for continuously recording screen content on Windows, optimized
 *   **Screensaver OCR (text recognition)**: Indexes text in screenshots in the background (idle mode or via screensaver) so they become searchable.
 *   **AI summary**: Uses the OpenAI API (ChatGPT) to generate structured daily reports from captured activity.
 *   **Efficiency**: Detects idle phases, pauses recording during power-save or screensaver operation, and can filter unchanged screen content.
+*   **i18n**: Supports multiple languages (Currently english and german), source code is in english.
 
 ## Project Structure
 

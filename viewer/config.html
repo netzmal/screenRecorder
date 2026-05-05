@@ -419,7 +419,7 @@
             defaultModeSelect.value = data.defaultMode || 'fit';
             startViewSelect.value = data.startView || 'latest';
             languageSelect.value = data.language || 'auto';
-            screensaverTimeoutSelect.value = data.screensaverTimeout || 300;
+            screensaverTimeoutSelect.value = String(data.screensaverTimeout || 300);
             screensaverRequirePasswordInput.checked = data.screensaverRequirePassword || false;
             
             updateScreensaverButton();
@@ -562,19 +562,20 @@
             const timeoutContainer = document.getElementById('screensaver-timeout-container');
             const secureContainer = document.getElementById('screensaver-secure-container');
             const optionsContainer = document.getElementById('screensaver-options-container');
+            
+            // We keep the options visible even if registered, so the user can change them.
             if (screensaverRegistered) {
                 toggleScreensaverBtn.innerText = ocr.screensaver_disable_btn || 'OCR Screen Saver deaktivieren';
                 toggleScreensaverBtn.className = 'btn btn-secondary';
-                if (timeoutContainer) timeoutContainer.style.display = 'none';
-                if (secureContainer) secureContainer.style.display = 'none';
-                if (optionsContainer) optionsContainer.style.display = 'none';
             } else {
                 toggleScreensaverBtn.innerText = ocr.screensaver_enable_btn || 'OCR Screen Saver aktivieren';
                 toggleScreensaverBtn.className = 'btn btn-primary';
-                if (timeoutContainer) timeoutContainer.style.display = 'flex';
-                if (secureContainer) secureContainer.style.display = 'flex';
-                if (optionsContainer) optionsContainer.style.display = 'flex';
             }
+            
+            // Always show options.
+            if (timeoutContainer) timeoutContainer.style.display = 'flex';
+            if (secureContainer) secureContainer.style.display = 'flex';
+            if (optionsContainer) optionsContainer.style.display = 'flex';
         }
 
         function toggleScreensaver() {

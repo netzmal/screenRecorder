@@ -164,13 +164,44 @@
             z-index: 1000;
             justify-content: center;
             align-items: center;
-            cursor: zoom-out;
+            cursor: pointer;
+            overflow: hidden;
+        }
+        #close-fullscreen-btn {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            font-size: 40px;
+            color: white;
+            cursor: pointer;
+            z-index: 1001;
+            background: rgba(0,0,0,0.5);
+            width: 50px;
+            height: 50px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            border-radius: 50%;
+            line-height: 1;
+            user-select: none;
+            transition: background 0.2s;
+        }
+        #close-fullscreen-btn:hover {
+            background: rgba(255,255,255,0.3);
         }
         #fullscreen-overlay img {
             max-width: 98%;
             max-height: 98%;
             object-fit: contain;
             object-position: center;
+            cursor: grab;
+            transition: transform 0.05s ease-out;
+            transform-origin: center center;
+            user-select: none;
+            -webkit-user-drag: none;
+        }
+        #fullscreen-overlay img:active {
+            cursor: grabbing;
         }
 
         /* Progressbar Styles */
@@ -632,6 +663,7 @@
     </div>
 
     <div id="fullscreen-overlay" onclick="closeFullscreen()">
+        <span id="close-fullscreen-btn">&times;</span>
         <img id="fullscreen-img" src="" />
     </div>
 
@@ -678,6 +710,14 @@
         let currentSearchQuery = '';
         let appVersion = '';
         let pendingTargetTime = null;
+
+        // Fullscreen zoom and pan variables
+        let zoomScale = 1;
+        let zoomX = 0;
+        let zoomY = 0;
+        let isDraggingZoom = false;
+        let dragStartX = 0;
+        let dragStartY = 0;
 
         ipcRenderer.send('get-config');
 
@@ -1763,7 +1803,19 @@
             content.style.setProperty('--display-count', displayCount);
         }
 
+        function updateZoom() {
+            fullscreenImg.style.transform = `scale(${zoomScale}) translate(${zoomX}px, ${zoomY}px)`;
+        }
+
+        function resetZoom() {
+            zoomScale = 1;
+            zoomX = 0;
+            zoomY = 0;
+            updateZoom();
+        }
+
         function openFullscreen(src) {
+            resetZoom();
             fullscreenImg.src = src;
             fullscreenOverlay.style.display = 'flex';
         }
@@ -1771,6 +1823,58 @@
         function closeFullscreen() {
             fullscreenOverlay.style.display = 'none';
         }
+
+        // Fullscreen zoom and pan event listeners
+        fullscreenImg.addEventListener('wheel', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            
+            const delta = -Math.sign(e.deltaY);
+            const factor = 1.2;
+            
+            if (delta > 0) {
+                zoomScale *= factor;
+            } else {
+                zoomScale /= factor;
+            }
+            
+            zoomScale = Math.max(1, Math.min(zoomScale, 20));
+            if (zoomScale === 1) {
+                zoomX = 0;
+                zoomY = 0;
+            }
+            updateZoom();
+        });
+
+        fullscreenImg.addEventListener('mousedown', (e) => {
+            if (e.button === 0) { // Left click
+                isDraggingZoom = true;
+                dragStartX = e.clientX - zoomX * zoomScale;
+                dragStartY = e.clientY - zoomY * zoomScale;
+                e.stopPropagation();
+            }
+        });
+
+        window.addEventListener('mousemove', (e) => {
+            if (isDraggingZoom) {
+                zoomX = (e.clientX - dragStartX) / zoomScale;
+                zoomY = (e.clientY - dragStartY) / zoomScale;
+                updateZoom();
+            }
+        });
+
+        window.addEventListener('mouseup', () => {
+            isDraggingZoom = false;
+        });
+
+        fullscreenImg.addEventListener('click', (e) => {
+            e.stopPropagation(); // Prevent closing overlay when clicking on image
+        });
+
+        fullscreenImg.addEventListener('dblclick', (e) => {
+            e.stopPropagation();
+            resetZoom();
+        });
 
         function showContextMenu(filePath, x, y) {
             // Simple custom context menu or direct Electron menu via IPC?
