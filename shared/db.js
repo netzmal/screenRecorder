@@ -323,6 +323,21 @@ function initDb() {
                     }
                 });
             }
+        },
+        {
+            version: 9,
+            description: "Add uiText column for UI-extracted text",
+            run: (db) => {
+                const tableInfo = db.prepare("PRAGMA table_info(captures)").all();
+                if (!tableInfo.map(c => c.name).includes('uiText')) {
+                    db.exec("ALTER TABLE captures ADD COLUMN uiText TEXT");
+                    // Update index.
+                    db.exec(`
+                        DROP INDEX IF EXISTS idx_captures_search;
+                        CREATE INDEX idx_captures_search ON captures(titles, activeWindow, ocrText, uiText, openFiles, urls, calls);
+                    `);
+                }
+            }
         }
     ];
 
@@ -362,14 +377,16 @@ function saveCapture(data) {
     const hasUrls = data.urls !== undefined;
     const hasCalls = data.calls !== undefined;
     const hasOcrText = data.ocrText !== undefined && data.ocrText !== null;
+    const hasUiText = data.uiText !== undefined && data.uiText !== null;
     const hasFiles = data.files !== undefined;
 
-    const titles = hasTitles ? (Array.isArray(data.titles) ? data.titles.join(' | ') : data.titles) : '';
+    const titles = hasTitles ? (Array.isArray(data.titles) ? JSON.stringify(data.titles) : data.titles) : '';
     const activeWindow = hasActiveWindow ? data.activeWindow : '';
-    const openFiles = hasOpenFiles ? (Array.isArray(data.openFiles) ? data.openFiles.join(' | ') : data.openFiles) : '';
-    const urls = hasUrls ? (Array.isArray(data.urls) ? data.urls.join(' | ') : data.urls) : '';
-    const calls = hasCalls ? (Array.isArray(data.calls) ? data.calls.join(' | ') : data.calls) : '';
+    const openFiles = hasOpenFiles ? (Array.isArray(data.openFiles) ? JSON.stringify(data.openFiles) : data.openFiles) : '';
+    const urls = hasUrls ? (Array.isArray(data.urls) ? JSON.stringify(data.urls) : data.urls) : '';
+    const calls = hasCalls ? (Array.isArray(data.calls) ? JSON.stringify(data.calls) : data.calls) : '';
     const ocrText = hasOcrText ? data.ocrText : null;
+    const uiText = hasUiText ? data.uiText : null;
     
     // Store paths as relative paths.
     let filesToSave = data.files || {};
@@ -381,8 +398,8 @@ function saveCapture(data) {
     const timestamp = data.timestamp || Date.now();
 
     const sql = `
-        INSERT OR IGNORE INTO captures (date, time, timestamp, titles, activeWindow, openFiles, urls, calls, ocrText, files)
-        VALUES (@date, @time, @timestamp, @titles, @activeWindow, @openFiles, @urls, @calls, @ocrText, @files)
+        INSERT OR IGNORE INTO captures (date, time, timestamp, titles, activeWindow, openFiles, urls, calls, ocrText, uiText, files)
+        VALUES (@date, @time, @timestamp, @titles, @activeWindow, @openFiles, @urls, @calls, @ocrText, @uiText, @files)
     `;
     console.log(`[SQL] ${sql}`);
     const insert = db.prepare(sql);
@@ -397,6 +414,7 @@ function saveCapture(data) {
         urls: urls,
         calls: calls,
         ocrText: ocrText,
+        uiText: uiText,
         files: filesJson
     };
 
@@ -404,7 +422,7 @@ function saveCapture(data) {
 
     if (result.changes === 0) {
         // If it already exists, check whether an update is needed.
-        const existingSql = 'SELECT titles, activeWindow, openFiles, urls, calls, ocrText, files FROM captures WHERE date = ? AND time = ?';
+        const existingSql = 'SELECT titles, activeWindow, openFiles, urls, calls, ocrText, uiText, files FROM captures WHERE date = ? AND time = ?';
         const existing = db.prepare(existingSql).get(data.date, data.time);
         
         if (existing) {
@@ -418,6 +436,7 @@ function saveCapture(data) {
             if (hasUrls && existing.urls !== urls) { needsUpdate = true; } else { updateParams.urls = existing.urls; }
             if (hasCalls && existing.calls !== calls) { needsUpdate = true; } else { updateParams.calls = existing.calls; }
             if (hasOcrText && existing.ocrText !== ocrText) { needsUpdate = true; } else { updateParams.ocrText = existing.ocrText; }
+            if (hasUiText && existing.uiText !== uiText) { needsUpdate = true; } else { updateParams.uiText = existing.uiText; }
             if (hasFiles && existing.files !== filesJson) { needsUpdate = true; } else { updateParams.files = existing.files; }
 
             if (needsUpdate) {
@@ -429,6 +448,7 @@ function saveCapture(data) {
                         urls = @urls,
                         calls = @calls,
                         ocrText = @ocrText, 
+                        uiText = @uiText,
                         files = @files,
                         timestamp = @timestamp
                     WHERE date = @date AND time = @time
@@ -465,6 +485,7 @@ function searchCaptures(query) {
         WHERE titles LIKE ? 
            OR activeWindow LIKE ? 
            OR ocrText LIKE ?
+           OR uiText LIKE ?
            OR openFiles LIKE ?
            OR urls LIKE ?
            OR calls LIKE ?
@@ -473,7 +494,7 @@ function searchCaptures(query) {
     console.log(`[SQL] ${sql}`);
     const search = db.prepare(sql);
     
-    return search.all(sqlQuery, sqlQuery, sqlQuery, sqlQuery, sqlQuery, sqlQuery).map(row => {
+    return search.all(sqlQuery, sqlQuery, sqlQuery, sqlQuery, sqlQuery, sqlQuery, sqlQuery).map(row => {
         const parsedFiles = JSON.parse(row.files || '{}');
         return {
             ...row,
@@ -485,7 +506,8 @@ function searchCaptures(query) {
                 openFiles: parseMetadata(row.openFiles),
                 urls: parseMetadata(row.urls),
                 calls: parseMetadata(row.calls),
-                ocrText: row.ocrText
+                ocrText: row.ocrText,
+                uiText: row.uiText
             }
         };
     });
@@ -551,7 +573,8 @@ function getDayCaptures(date) {
                     openFiles: parseMetadata(row.openFiles),
                     urls: parseMetadata(row.urls),
                     calls: parseMetadata(row.calls),
-                    ocrText: row.ocrText
+                    ocrText: row.ocrText,
+                    uiText: row.uiText
                 }
             };
         });
@@ -565,10 +588,11 @@ function getCaptureByDateTime(date, time) {
     try {
         const db = initDb();
         const sql = 'SELECT * FROM captures WHERE date = ? AND time = ?';
-        console.log(`[SQL] ${sql}`);
+        console.log(`[SQL] ${sql} for date=${date}, time=${time}`);
         const stmt = db.prepare(sql);
         const row = stmt.get(date, time);
         if (row) {
+            console.log(`[DB] Found capture for ${date} ${time} (ID: ${row.id})`);
             const parsedFiles = JSON.parse(row.files || '{}');
             row.files = makePathsAbsolute(parsedFiles);
             row.meta = {
@@ -577,7 +601,8 @@ function getCaptureByDateTime(date, time) {
                 openFiles: parseMetadata(row.openFiles),
                 urls: parseMetadata(row.urls),
                 calls: parseMetadata(row.calls),
-                ocrText: row.ocrText
+                ocrText: row.ocrText,
+                uiText: row.uiText
             };
         }
         return row;
@@ -746,7 +771,7 @@ function getDaySummary(date, lang = null) {
     }
     const db = initDb();
     const sql = `
-        SELECT time, activeWindow, titles, openFiles, urls, calls, ocrText 
+        SELECT time, activeWindow, titles, openFiles, urls, calls, ocrText, uiText 
         FROM captures 
         WHERE date = ? 
         ORDER BY timestamp ASC
@@ -778,7 +803,7 @@ function getDaySummary(date, lang = null) {
             }
             summary += `[${time}] ${i18n.t('viewer.summary_parts.fokus')}: ${app}\n`;
             if (row.titles && row.titles.length > 0) {
-                const titles = row.titles.split(' | ');
+                const titles = parseMetadata(row.titles);
                 const activeTitle = titles.find(t => t.includes(app)) || titles[0];
                 summary += `   ${i18n.t('viewer.summary_parts.window')}: ${activeTitle}\n`;
             }
@@ -787,7 +812,7 @@ function getDaySummary(date, lang = null) {
 
         // Add calls.
         if (row.calls && row.calls.length > 0) {
-            const calls = row.calls.split(' | ');
+            const calls = parseMetadata(row.calls);
             calls.forEach(call => {
                 summary += `   ${i18n.t('viewer.summary_parts.call')}: ${call}\n`;
             });
@@ -795,7 +820,7 @@ function getDaySummary(date, lang = null) {
 
         // Add URLs.
         if (row.urls && row.urls.length > 0) {
-            const urls = row.urls.split(' | ');
+            const urls = parseMetadata(row.urls);
             urls.forEach(url => {
                 summary += `   ${i18n.t('viewer.summary_parts.url')}: ${url}\n`;
             });
@@ -803,16 +828,32 @@ function getDaySummary(date, lang = null) {
 
         // Add open files (only when relevant for the timestamp).
         if (row.openFiles && row.openFiles.length > 0) {
-            const files = row.openFiles.split(' | ');
+            const files = parseMetadata(row.openFiles);
             files.forEach(file => {
                 summary += `   ${i18n.t('viewer.summary_parts.file')}: ${file}\n`;
             });
         }
         
-        // Add OCR snippets when present and not too long.
+        // Add UI Text (UI Automation) - often cleaner than OCR.
+        let cleanUiText = "";
+        if (row.uiText && row.uiText.length > 20) {
+            cleanUiText = row.uiText.substring(0, 300).replace(/\n/g, ' ').trim();
+            if (cleanUiText.length > 0) {
+                summary += `   ${i18n.t('viewer.summary_parts.ui_text')}: ${cleanUiText}...\n`;
+            }
+        }
+        
+        // Add OCR snippets when present and not too long, and not redundant with UI Text.
         if (row.ocrText && row.ocrText.length > 20) {
-            const cleanOcr = row.ocrText.replace(/--- Display \d+ ---\n/g, '').substring(0, 200).replace(/\n/g, ' ');
-            if (cleanOcr.trim().length > 0) {
+            const cleanOcr = row.ocrText.replace(/--- Display \d+ ---\n/g, '').substring(0, 200).replace(/\n/g, ' ').trim();
+            
+            // Basic redundancy check: if UI text already contains most of the OCR text, skip it.
+            const isRedundant = cleanUiText && cleanOcr && (
+                cleanUiText.includes(cleanOcr.substring(0, 50)) || 
+                cleanOcr.includes(cleanUiText.substring(0, 50))
+            );
+
+            if (cleanOcr.length > 0 && !isRedundant) {
                 summary += `   ${i18n.t('viewer.summary_parts.ocr')}: ${cleanOcr}...\n`;
             }
         }
@@ -835,7 +876,7 @@ function getDayUrls(date) {
     const rows = stmt.all(date);
     return rows.map(row => ({
         time: row.time.replace(/-/g, ':'),
-        urls: row.urls ? row.urls.split(' | ') : [],
+        urls: parseMetadata(row.urls),
         activeWindow: row.activeWindow
     }));
 }
@@ -854,7 +895,7 @@ function getDayCalls(date) {
     const rows = stmt.all(date);
     return rows.map(row => ({
         time: row.time.replace(/-/g, ':'),
-        calls: row.calls ? row.calls.split(' | ') : []
+        calls: parseMetadata(row.calls)
     }));
 }
 

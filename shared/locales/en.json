@@ -19,6 +19,7 @@
       "urls": "URLs",
       "calls": "Calls",
       "ocr": "OCR/Text",
+      "ui_text": "UI Text",
       "summary": "AI Summary"
     },
     "meta": {
@@ -27,6 +28,7 @@
       "loading_urls": "Loading URLs...",
       "loading_ocr": "Loading OCR text...",
       "no_ocr": "No OCR text available or feature disabled.",
+      "no_ui_text": "No UI text available.",
       "no_titles": "No window titles found in metadata",
       "no_titles_list": "No title list available in metadata",
       "no_files": "No open files captured",
@@ -64,12 +66,13 @@
     "summary_parts": {
       "title": "Activity Summary for {date}",
       "prompt_intro": "Copy this text into ChatGPT with the following prompt:",
-      "prompt_text": "\"Analyze my activities based on window titles, file paths, URLs, and OCR texts. Group them by customer projects or topics. Provide an estimated total duration for each topic and create a list of completed tasks.\"",
+      "prompt_text": "\"Analyze my activities based on window titles, file paths, URLs, UI texts, and OCR texts. Group them by customer projects or topics. Provide an estimated total duration for each topic and create a list of completed tasks.\"",
       "fokus": "Focus",
       "window": "Window",
       "url": "URL",
       "file": "File",
       "call": "Call",
+      "ui_text": "Content (UI Text)",
       "ocr": "Content (OCR)",
       "until": "until",
       "unknown": "Unknown",
@@ -120,6 +123,7 @@
     "tooltip": "Screen Recorder",
     "menu": {
       "show_viewer": "Show Viewer",
+      "debug": "Debug",
       "settings": "Settings",
       "quit": "Quit",
       "pause": "Pause Recording",

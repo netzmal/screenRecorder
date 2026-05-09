@@ -1,15 +1,21 @@
-const { app, Menu, Tray, nativeImage, Notification } = require('electron');
+const { app, Menu, Tray, nativeImage, Notification, BrowserWindow, ipcMain } = require('electron');
 const path = require('path');
 const fs = require('fs');
+
+// Set the app name as early as possible so electron-store and other modules use the same path.
+if (app) {
+    app.name = 'screen-recorder-shared';
+}
+
 const screenshot = require('screenshot-desktop');
 const crypto = require('crypto');
 const Tesseract = require('tesseract.js');
-const { exec, spawn } = require('child_process');
-const os = require('os');
+const { spawn } = require('child_process');
 const { getConfigDir, getInterval, getOnlyOnChanges, getOcrEnabled, getOcrLanguage, store, getScreenshotOnWindowChange, getWindowChangeDelay, getScreenshotOnDisplayChange, getDisplayChangeDelay, getSkipOnPowerSave, getOcrFastMode, getIsBatchOcrRunning, setIsBatchOcrRunning, getIsScreensaverRunning, setIsScreensaverRunning, getLanguage, getScreenshotFormat, setLastIndexingTime } = require('../shared/config');
 const { saveCapture, saveCapturesBatch, initDb, getAllCaptures, deleteCapture, getPendingOcrCount } = require('../shared/db');
 const i18n = require('../shared/i18n');
 const { runWindowsOcrBatch } = require('../shared/ocr-helper');
+const { createPowerShellService } = require('./powershell-service');
 
 // Initialize i18n.
 const configLanguage = getLanguage();
@@ -31,9 +37,14 @@ function logDebug(message) {
     console.log(message);
 }
 
+const powershellService = createPowerShellService({
+    workerScriptPath: path.join(__dirname, 'powershell-worker.ps1'),
+    logDebug
+});
+
 // Set AppUserModelId for notifications on Windows.
 if (process.platform === 'win32') {
-    app.setAppUserModelId('com.screen.recorder');
+    app.setAppUserModelId('com.screen.recorder.tray');
 }
 
 // Startup Logging
@@ -44,10 +55,30 @@ console.log('Interval:', getInterval());
 console.log('Screenshot Format:', getScreenshotFormat());
 console.log('------------------------------------');
 
+let cachedMetaData = { 
+    titles: [], 
+    files: [], 
+    urls: [], 
+    calls: [], 
+    activeWindow: "", 
+    monitors: [], 
+    uiText: null,
+    ocrText: null,
+    lastCheck: null,
+    timestamps: {
+        titles: null,
+        files: null,
+        urls: null,
+        calls: null,
+        monitors: null,
+        uiText: null
+    }
+};
+let metaDataInterval;
 let tray;
+let debugWindow = null;
 let recordingTimeout;
 let idleCheckInterval;
-let windowMonitorInterval;
 let nextScreenshotTime;
 let lastHashes = {}; // { displayId: hash }
 let lastActiveWindowTitle = "";
@@ -56,6 +87,7 @@ let windowChangeTimeout = null;
 let displayChangeTimeout = null;
 let ocrWorker = null;
 let currentOnNewScreenshots = null;
+let windowMonitorCheckRunning = false;
 
 
 async function getOcrWorker() {
@@ -97,101 +129,26 @@ async function terminateOcrWorker() {
     }
 }
 
-function isPowerSaving() {
+// Checks whether Windows is in a state where captures should be skipped.
+async function isPowerSaving() {
     if (!getSkipOnPowerSave()) return Promise.resolve(false);
-    
-    return new Promise((resolve) => {
-        const script = `
-            $ProgressPreference = 'SilentlyContinue'
-            [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
-            Add-Type -TypeDefinition @'
-            using System;
-            using System.Runtime.InteropServices;
-            public class Win32 {
-                [DllImport("user32.dll")]
-                public static extern bool GetLastInputInfo(ref LASTINPUTINFO plii);
-                [StructLayout(LayoutKind.Sequential)]
-                public struct LASTINPUTINFO {
-                    public uint cbSize;
-                    public uint dwTime;
-                }
-                
-                [DllImport("user32.dll")]
-                public static extern IntPtr GetForegroundWindow();
-                
-                [DllImport("user32.dll")]
-                public static extern bool GetWindowRect(IntPtr hWnd, out RECT lpRect);
-                [StructLayout(LayoutKind.Sequential)]
-                public struct RECT {
-                    public int Left, Top, Right, Bottom;
-                }
-            }
-'@ -ErrorAction SilentlyContinue
 
-            $isScreenSaverRunning = Get-Process | Where-Object { $_.ProcessName -like "*scrnsave*" -or $_.MainWindowTitle -like "*screensaver*" }
-            if ($isScreenSaverRunning) { return $true }
-
-            # Check whether the monitor is in standby (via WMI/CIM).
-            # A simple method on Windows is to check whether the monitor status is "Power Off".
-            try {
-                $monitors = Get-CimInstance -Namespace root\\wmi -ClassName WmiMonitorBasicDisplayParams
-                $allOff = $true
-                foreach ($m in $monitors) {
-                    if ($m.Active) { $allOff = $false; break }
-                }
-                if ($monitors.Count -gt 0 -and $allOff) { return $true }
-            } catch {}
-
-            return $false
-        `;
-        const encodedScript = Buffer.from(script, 'utf16le').toString('base64');
-        exec(`powershell -NoProfile -EncodedCommand ${encodedScript}`, (error, stdout) => {
-            if (error) {
-                resolve(false);
-                return;
-            }
-            resolve(stdout.trim().toLowerCase() === 'true');
-        });
-    });
+    try {
+        return await powershellService.isPowerSaving();
+    } catch (err) {
+        logDebug(`Power saving check failed: ${err.message}`);
+        return false;
+    }
 }
 
-function getIdleTime() {
-    return new Promise((resolve) => {
-        const script = `
-            $ProgressPreference = 'SilentlyContinue'
-            [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
-            $code = @'
-            using System;
-            using System.Runtime.InteropServices;
-            public class Win32 {
-                [StructLayout(LayoutKind.Sequential)]
-                public struct LASTINPUTINFO {
-                    public uint cbSize;
-                    public uint dwTime;
-                }
-                [DllImport("user32.dll")]
-                public static extern bool GetLastInputInfo(ref LASTINPUTINFO plii);
-            }
-'@
-            Add-Type -TypeDefinition $code -ErrorAction SilentlyContinue
-            $lii = New-Object Win32+LASTINPUTINFO
-            $lii.cbSize = [System.Runtime.InteropServices.Marshal]::SizeOf($lii)
-            if ([Win32]::GetLastInputInfo([ref]$lii)) {
-                $idleTicks = [Environment]::TickCount - $lii.dwTime
-                $idleTicks
-            } else {
-                0
-            }
-        `;
-        const encodedScript = Buffer.from(script, 'utf16le').toString('base64');
-        exec(`powershell -NoProfile -EncodedCommand ${encodedScript}`, (error, stdout) => {
-            if (error) {
-                resolve(0);
-                return;
-            }
-            resolve(parseInt(stdout.trim()) || 0);
-        });
-    });
+// Reads the system idle time through the persistent PowerShell worker.
+async function getIdleTime() {
+    try {
+        return await powershellService.getIdleTime();
+    } catch (err) {
+        logDebug(`Idle time check failed: ${err.message}`);
+        return 0;
+    }
 }
 
 // Run database maintenance (delete orphaned entries).
@@ -233,289 +190,38 @@ async function runDatabaseMaintenance() {
 }
 
 
-function getMetaData(includeFull = true, includeMonitors = true) {
-    return new Promise((resolve) => {
-        // More robust PowerShell command.
-        const script = `
-            $ProgressPreference = 'SilentlyContinue'
-            [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
-            $output = @{ 
-                titles = @(); 
-                files = @(); 
-                urls = @();
-                calls = @();
-                activeWindow = ""; 
-                activeWindowRect = @{ Left = 0; Top = 0; Right = 0; Bottom = 0 };
-                monitors = @()
-            };
-            
-            $includeFull = ${includeFull ? '$true' : '$false'}
-            $includeMonitors = ${includeMonitors ? '$true' : '$false'}
+// Normalizes PowerShell scalar-or-array output into a unique string array.
+function normalizeStringArray(value) {
+    const items = Array.isArray(value) ? value : (value ? [value] : []);
+    return [...new Set(items)].filter(item => item && typeof item === 'string' && item.trim() !== '');
+}
 
-            # Determine the active window (always needed for monitoring).
-            $code = @'
-                using System;
-                using System.Runtime.InteropServices;
-                public class Win32 {
-                    [DllImport("user32.dll")]
-                    public static extern IntPtr GetForegroundWindow();
-                    [DllImport("user32.dll")]
-                    public static extern bool GetWindowRect(IntPtr hWnd, out RECT lpRect);
-                    [StructLayout(LayoutKind.Sequential)]
-                    public struct RECT {
-                        public int Left, Top, Right, Bottom;
-                    }
-                }
-'@
-            try {
-                Add-Type -TypeDefinition $code -ErrorAction SilentlyContinue
-                $hwnd = [Win32]::GetForegroundWindow()
-                $activeProc = Get-Process | Where-Object { $_.MainWindowHandle -eq $hwnd }
-                if ($activeProc) {
-                    $output.activeWindow = $activeProc.MainWindowTitle
-                    if ($output.activeWindow) {
-                        $output.titles += $output.activeWindow
-                    }
-                    $rect = New-Object Win32+RECT
-                    if ([Win32]::GetWindowRect($hwnd, [ref]$rect)) {
-                        $output.activeWindowRect.Left = $rect.Left
-                        $output.activeWindowRect.Top = $rect.Top
-                        $output.activeWindowRect.Right = $rect.Right
-                        $output.activeWindowRect.Bottom = $rect.Bottom
-                    }
-                }
-            } catch {}
+// Collects and normalizes metadata from the persistent PowerShell worker.
+async function getMetaDataFromWorker(includeFull, includeMonitors) {
+    try {
+        const data = await powershellService.getMetaData(includeFull, includeMonitors);
+        const urls = normalizeStringArray(data.urls);
+        const calls = normalizeStringArray(data.calls);
 
-            if ($includeFull) {
-                # Determine browser URLs (Chrome & Edge) via UIAutomation.
-                try {
-                    if ($null -eq [System.Windows.Automation.AutomationElement]) {
-                        Add-Type -AssemblyName UIAutomationClient -ErrorAction SilentlyContinue
-                        Add-Type -AssemblyName UIAutomationTypes -ErrorAction SilentlyContinue
-                    }
-                    
-                    function Get-BrowserUrls {
-                        param([string]$processName)
-                        $urls = @()
-                        try {
-                            $procs = Get-Process $processName -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowHandle -ne 0 }
-                            foreach ($proc in $procs) {
-                                try {
-                                    $root = [System.Windows.Automation.AutomationElement]::FromHandle($proc.MainWindowHandle)
-                                    
-                                    # 1. Try AutomationId (Chromium & Firefox standards).
-                                    $idCondition = [System.Windows.Automation.OrCondition]::New(
-                                        [System.Windows.Automation.PropertyCondition]::New([System.Windows.Automation.AutomationElement]::AutomationIdProperty, "address-edit-box"),
-                                        [System.Windows.Automation.PropertyCondition]::New([System.Windows.Automation.AutomationElement]::AutomationIdProperty, "urlbar")
-                                    )
-                                    $editElement = $root.FindFirst([System.Windows.Automation.TreeScope]::Descendants, $idCondition)
-                                    
-                                    # 2. Fallback: search for named edit controls (localized).
-                                    if (-not $editElement) {
-                                        $names = @("Address and search bar", "Adress- und Suchleiste", "Address edit box", "Search or enter web address", "URL-Leiste", "Adressleiste")
-                                        foreach ($name in $names) {
-                                            $nameCondition = [System.Windows.Automation.AndCondition]::New(
-                                                [System.Windows.Automation.PropertyCondition]::New([System.Windows.Automation.AutomationElement]::ControlTypeProperty, [System.Windows.Automation.ControlType]::Edit),
-                                                [System.Windows.Automation.PropertyCondition]::New([System.Windows.Automation.AutomationElement]::NameProperty, $name)
-                                            )
-                                            $editElement = $root.FindFirst([System.Windows.Automation.TreeScope]::Descendants, $nameCondition)
-                                            if ($editElement) { break }
-                                        }
-                                    }
-
-                                    # 3. Fallback: simply search for the first edit control.
-                                    if (-not $editElement) {
-                                        $editCondition = [System.Windows.Automation.PropertyCondition]::New(
-                                            [System.Windows.Automation.AutomationElement]::ControlTypeProperty, 
-                                            [System.Windows.Automation.ControlType]::Edit
-                                        )
-                                        $editElement = $root.FindFirst([System.Windows.Automation.TreeScope]::Descendants, $editCondition)
-                                    }
-                                    
-                                    if ($editElement) {
-                                        $val = ""
-                                        try {
-                                            $pattern = $editElement.GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern)
-                                            $val = $pattern.Current.Value
-                                        } catch {
-                                            $val = $editElement.Current.Name
-                                        }
-                                        # Simple heuristic: must contain a dot, slash, or colon and must not be a pure placeholder.
-                                        if ($val -and $val.Length -gt 3 -and $val -match "(\.|/|:)") {
-                                            $urls += $val
-                                        }
-                                    }
-                                } catch {}
-                            }
-                        } catch {}
-                        return $urls | Select-Object -Unique
-                    }
-                    
-                    $chromeUrls = Get-BrowserUrls "chrome"
-                    if ($chromeUrls) { $output.urls += $chromeUrls }
-                    $edgeUrls = Get-BrowserUrls "msedge"
-                    if ($edgeUrls) { $output.urls += $edgeUrls }
-                    $firefoxUrls = Get-BrowserUrls "firefox"
-                    if ($firefoxUrls) { $output.urls += $firefoxUrls }
-
-                    # Text extraction from the active window via UIAutomation (DOM-like).
-                    if ($hwnd -ne 0) {
-                        try {
-                            $activeRoot = [System.Windows.Automation.AutomationElement]::FromHandle($hwnd)
-                            $textElements = $activeRoot.FindAll([System.Windows.Automation.TreeScope]::Descendants, [System.Windows.Automation.Condition]::TrueCondition)
-                            $extractedTexts = @()
-                            foreach ($el in $textElements) {
-                                if ($el.Current.ControlType.ProgrammaticName -match "Text|Edit|Document|List|ListItem|Header") {
-                                    $val = ""
-                                    try {
-                                        $p = $el.GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern)
-                                        $val = $p.Current.Value
-                                    } catch {
-                                        $val = $el.Current.Name
-                                    }
-                                    if ($val -and $val.Length -gt 3 -and $val.Length -lt 2000) {
-                                        $extractedTexts += $val.Trim()
-                                    }
-                                }
-                            }
-                            if ($extractedTexts.Count -gt 0) {
-                                $output.ocrText += [char]10 + "--- UI Extracted Text (Active Window) ---" + [char]10
-                                $output.ocrText += ($extractedTexts | Select-Object -Unique) -join [char]10
-                            }
-                        } catch {}
-                    }
-                } catch {}
-
-                # All window titles.
-                try {
-                    Get-Process | Where-Object { $_.MainWindowTitle } | ForEach-Object { $output.titles += $_.MainWindowTitle };
-                } catch {}
-                
-                # Open files in Explorer.
-                try {
-                    $exp = New-Object -ComObject Shell.Application;
-                    $exp.Windows() | ForEach-Object {
-                        try {
-                            if ($_.LocationURL -like 'file://*') {
-                                $path = $_.LocationURL.Replace('file:///', '').Replace('/', '\\');
-                                $decodedPath = [uri]::UnescapeDataString($path);
-                                $output.files += $decodedPath;
-                            }
-                        } catch {}
-                    }
-                } catch {};
-
-                # Detect calls (3CX & Windows Phone API).
-                try {
-                    # 1. 3CX-specific detection via window title (even when not focused).
-                    $3cxProcs = Get-Process | Where-Object { ($_.ProcessName -match "3CX") -and $_.MainWindowTitle }
-                    foreach ($p in $3cxProcs) {
-                        $title = $p.MainWindowTitle
-                        # Typical patterns for active calls in 3CX.
-                        if ($title -match "Call with|Anruf mit|Calling|Wählt|Ringe|Ringing|Talking|Sprechen|On Call") {
-                            $output.calls += "3CX: $title"
-                        }
-                    }
-                    
-                    # 2. Windows Phone API (WinRT) check via shell (only when includeFull).
-                    if ($includeFull) {
-                        # Search for active processes whose names contain 'Phone' or 'Call'.
-                        $callProcs = Get-Process | Where-Object { ($_.ProcessName -match "Phone|Call") -and ($_.ProcessName -notmatch "Chrome|Edge|Explorer|3CX") -and $_.MainWindowTitle }
-                        foreach ($p in $callProcs) {
-                            $output.calls += "$($p.ProcessName): $($p.MainWindowTitle)"
-                        }
-                    }
-                } catch {}
-            }
-
-            # Determine monitors (only when requested).
-            if ($includeMonitors) {
-                try {
-                    Add-Type -AssemblyName System.Windows.Forms
-                    [System.Windows.Forms.Screen]::AllScreens | ForEach-Object {
-                        $output.monitors += @{
-                            DeviceName = $_.DeviceName;
-                            Bounds = @{
-                                X = $_.Bounds.X;
-                                Y = $_.Bounds.Y;
-                                Width = $_.Bounds.Width;
-                                Height = $_.Bounds.Height
-                            };
-                            Primary = $_.Primary
-                        }
-                    }
-                } catch {}
-            }
-            $output | ConvertTo-Json -Depth 4
-        `;
-        const tempScriptPath = path.join(os.tmpdir(), `sr-metadata-${Date.now()}-${Math.random().toString(36).substring(7)}.ps1`);
-        
-        try {
-            // Save the script with a UTF-8 BOM so PowerShell recognizes umlauts correctly.
-            fs.writeFileSync(tempScriptPath, '\ufeff' + script, 'utf8');
-        } catch (err) {
-            logDebug(`Failed to write temp script: ${err.message}`);
-            resolve({ titles: [], files: [], activeWindow: "" });
-            return;
+        // Debug log for metadata.
+        if (urls.length > 0 || calls.length > 0) {
+            logDebug(`Metadaten erfasst - URLs: ${urls.length}, Calls: ${calls.length}`);
         }
 
-        const psProcess = spawn('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', tempScriptPath]);
-        
-        let stdout = '';
-        psProcess.stdout.on('data', (data) => {
-            stdout += data.toString();
-        });
-
-        psProcess.stderr.on('data', (data) => {
-            const errorMsg = data.toString();
-            // Ignore typical PowerShell initialization messages or CLIXML headers.
-            if (errorMsg.includes('<Objs') || errorMsg.includes('#< CLIXML') || errorMsg.includes('Module werden vorbereitet')) {
-                return;
-            }
-            logDebug(`PowerShell Error: ${errorMsg}`);
-        });
-
-        psProcess.on('close', (code) => {
-            // Delete temp file.
-            try {
-                if (fs.existsSync(tempScriptPath)) fs.unlinkSync(tempScriptPath);
-            } catch (e) {
-                logDebug(`Failed to delete temp script: ${e.message}`);
-            }
-
-            if (code !== 0) {
-                logDebug(`PowerShell exited with code ${code}`);
-                resolve({ titles: [], files: [], activeWindow: "" });
-                return;
-            }
-            try {
-                const data = JSON.parse(stdout);
-                const titles = Array.isArray(data.titles) ? data.titles : (data.titles ? [data.titles] : []);
-                const files = Array.isArray(data.files) ? data.files : (data.files ? [data.files] : []);
-                const urls = Array.isArray(data.urls) ? data.urls : (data.urls ? [data.urls] : []);
-                const calls = Array.isArray(data.calls) ? data.calls : (data.calls ? [data.calls] : []);
-                const activeWindow = data.activeWindow || "";
-                const activeWindowRect = data.activeWindowRect;
-                const monitors = Array.isArray(data.monitors) ? data.monitors : (data.monitors ? [data.monitors] : []);
-                
-                // Debug log for metadata.
-                if (urls.length > 0 || calls.length > 0) {
-                    logDebug(`Metadaten erfasst - URLs: ${urls.length}, Calls: ${calls.length}`);
-                }
-                
         // Filter unique values and empty entries.
-        const result = { 
-            activeWindow: activeWindow,
-            activeWindowRect: activeWindowRect,
-            monitors: monitors,
-            titles: [...new Set(titles)].filter(t => t && typeof t === 'string' && t.trim() !== ''), 
-            files: [...new Set(files)].filter(f => f && typeof f === 'string' && f.trim() !== ''),
-            urls: [...new Set(urls)].filter(u => u && typeof u === 'string' && u.trim() !== ''),
-            calls: [...new Set(calls)].filter(c => c && typeof c === 'string' && c.trim() !== '')
+        const result = {
+            activeWindow: data.activeWindow || "",
+            activeWindowRect: data.activeWindowRect,
+            monitors: Array.isArray(data.monitors) ? data.monitors : (data.monitors ? [data.monitors] : []),
+            titles: normalizeStringArray(data.titles),
+            files: normalizeStringArray(data.files),
+            urls: urls,
+            calls: calls,
+            uiText: data.uiText || null
         };
 
         if (includeFull) {
-            logDebug(`getMetaData - titles: ${result.titles.length}, files: ${result.files.length}, urls: ${result.urls.length}, calls: ${result.calls.length}`);
+            logDebug(`getMetaData - titles: ${result.titles.length}, files: ${result.files.length}, urls: ${result.urls.length}, calls: ${result.calls.length}, uiText: ${result.uiText ? 'yes' : 'no'}`);
             
             // Debugging: log the first 3 titles.
             if (result.titles.length > 0) {
@@ -524,14 +230,18 @@ function getMetaData(includeFull = true, includeMonitors = true) {
                 logDebug(`WARNUNG: Keine Titel erfasst!`);
             }
         }
-        
-        resolve(result);
-            } catch (e) {
-                console.error('Metadata parsing failed', e, stdout);
-                resolve({ titles: [], files: [], activeWindow: "" });
-            }
-        });
-    });
+
+        return result;
+    } catch (e) {
+        console.error('Metadata collection failed', e);
+        return { titles: [], files: [], urls: [], calls: [], activeWindow: "", monitors: [], uiText: null };
+    }
+}
+
+// Provides the metadata API used by screenshots and window monitoring.
+// Returns the last cached metadata snapshot.
+async function getMetaData(includeFull = true, includeMonitors = true) {
+    return cachedMetaData;
 }
 
 function updateTrayStatus() {
@@ -541,8 +251,8 @@ function updateTrayStatus() {
 
 function openViewer() {
     if (app.isPackaged) {
-        // In the installed app, use our own executable path without arguments.
-        spawn(process.execPath, [], {
+        // Start the viewer as its own Windows app identity instead of reusing the tray context.
+        spawn(process.execPath, ['viewer'], {
             detached: true,
             stdio: 'ignore'
         }).unref();
@@ -557,6 +267,38 @@ function openViewer() {
         }).unref();
     }
 }
+
+function openDebugWindow() {
+    if (debugWindow) {
+        debugWindow.focus();
+        return;
+    }
+
+    debugWindow = new BrowserWindow({
+        width: 600,
+        height: 500,
+        title: 'Screen Recorder Debug',
+        icon: path.join(__dirname, 'assets', 'icon.ico'),
+        webPreferences: {
+            nodeIntegration: true,
+            contextIsolation: false
+        }
+    });
+
+    debugWindow.loadFile(path.join(__dirname, 'debug.html'));
+
+    debugWindow.on('closed', () => {
+        debugWindow = null;
+    });
+
+    // Remove menu from debug window
+    debugWindow.setMenu(null);
+}
+
+// IPC listener for debug data
+ipcMain.on('get-debug-data', (event) => {
+    event.reply('debug-data', cachedMetaData);
+});
 
 function startScreensaver() {
     if (app.isPackaged) {
@@ -606,11 +348,16 @@ function setupTray() {
     
     const contextMenu = Menu.buildFromTemplate([
         { label: i18n.t('tray.menu.show_viewer'), click: () => openViewer() },
-        { type: 'separator' },
+        { label: i18n.t('tray.menu.debug'), click: () => openDebugWindow() },
         { label: i18n.t('tray.menu.quit'), click: () => app.quit() }
     ]);
     tray.setToolTip(`${i18n.t('tray.tooltip')} v${app.getVersion()}`);
     tray.setContextMenu(contextMenu);
+
+    // Open viewer on double click
+    tray.on('double-click', () => {
+        openViewer();
+    });
 
     // Initialize DB.
     initDb();
@@ -836,10 +583,11 @@ async function takeScreenshots(onNewScreenshots) {
                 urls: meta.urls || [],
                 calls: meta.calls || [],
                 ocrText: meta.ocrText || null,
+                uiText: meta.uiText || null,
                 files: capturedFiles
             });
 
-            const pendingCount = updatePendingOcrCount();
+            const pendingCount = getPendingOcrCount();
             logDebug(`Capture saved to DB: ${year}-${month}-${day} ${timeStr}-${secondsStr}. Pending OCR: ${pendingCount}`);
 
             if (currentOnNewScreenshots) {
@@ -868,35 +616,70 @@ function scheduleNextScreenshot() {
 function startRecording(onNewScreenshots) {
     if (recordingTimeout) clearTimeout(recordingTimeout);
     if (idleCheckInterval) clearInterval(idleCheckInterval);
-    if (windowMonitorInterval) clearInterval(windowMonitorInterval);
+    if (metaDataInterval) clearInterval(metaDataInterval);
     
     if (onNewScreenshots) currentOnNewScreenshots = onNewScreenshots;
     
     // Check database maintenance every 15 minutes.
     idleCheckInterval = setInterval(runDatabaseMaintenance, 15 * 60 * 1000);
     
-    // Monitor window changes every 2 seconds.
-    windowMonitorInterval = setInterval(async () => {
-        const checkWindowChange = getScreenshotOnWindowChange();
-        const checkDisplayChange = getScreenshotOnDisplayChange();
-        
-        if (!checkWindowChange && !checkDisplayChange) return;
+    // Combined metadata loop and window monitor.
+    // This runs "relaxed" in the background as requested.
+    const runMetadataLoop = async () => {
+        if (windowMonitorCheckRunning) return;
+        windowMonitorCheckRunning = true;
         
         try {
-            // Fetch only minimal metadata for monitoring.
-            // Fetch monitor data only when checkDisplayChange is active.
-            const meta = await getMetaData(false, checkDisplayChange);
+            const checkWindowChange = getScreenshotOnWindowChange();
+            const checkDisplayChange = getScreenshotOnDisplayChange();
             
+            // "Relaxed" everything query.
+            // We fetch full metadata to keep the cache fresh.
+            const meta = await getMetaDataFromWorker(true, true);
+            const now = new Date().toISOString();
+            cachedMetaData.lastCheck = now;
+            
+            // Update individual categories and their timestamps
+            if (JSON.stringify(meta.titles) !== JSON.stringify(cachedMetaData.titles) || !cachedMetaData.timestamps.titles) {
+                cachedMetaData.titles = meta.titles;
+                cachedMetaData.timestamps.titles = now;
+            }
+            if (JSON.stringify(meta.files) !== JSON.stringify(cachedMetaData.files) || !cachedMetaData.timestamps.files) {
+                cachedMetaData.files = meta.files;
+                cachedMetaData.timestamps.files = now;
+            }
+            if (JSON.stringify(meta.urls) !== JSON.stringify(cachedMetaData.urls) || !cachedMetaData.timestamps.urls) {
+                cachedMetaData.urls = meta.urls;
+                cachedMetaData.timestamps.urls = now;
+            }
+            if (JSON.stringify(meta.calls) !== JSON.stringify(cachedMetaData.calls) || !cachedMetaData.timestamps.calls) {
+                cachedMetaData.calls = meta.calls;
+                cachedMetaData.timestamps.calls = now;
+            }
+            if (JSON.stringify(meta.monitors) !== JSON.stringify(cachedMetaData.monitors) || !cachedMetaData.timestamps.monitors) {
+                cachedMetaData.monitors = meta.monitors;
+                cachedMetaData.timestamps.monitors = now;
+            }
+            if (meta.uiText !== cachedMetaData.uiText || !cachedMetaData.timestamps.uiText) {
+                cachedMetaData.uiText = meta.uiText;
+                cachedMetaData.timestamps.uiText = now;
+            }
+            
+            cachedMetaData.activeWindow = meta.activeWindow;
+            cachedMetaData.activeWindowRect = meta.activeWindowRect;
+
+            // Update debug window if open
+            if (debugWindow && !debugWindow.isDestroyed()) {
+                debugWindow.webContents.send('debug-data', cachedMetaData);
+            }
+
             // 1. Check window changes.
             if (checkWindowChange && meta.activeWindow && meta.activeWindow !== lastActiveWindowTitle) {
                 console.log(`Window changed: ${lastActiveWindowTitle} -> ${meta.activeWindow}`);
                 lastActiveWindowTitle = meta.activeWindow;
                 
-                // Trigger screenshot after a delay.
                 if (windowChangeTimeout) clearTimeout(windowChangeTimeout);
-                
                 const delay = getWindowChangeDelay();
-                console.log(`Scheduling out-of-turn screenshot in ${delay}s due to window change`);
                 windowChangeTimeout = setTimeout(() => {
                     takeScreenshots(currentOnNewScreenshots);
                 }, delay * 1000);
@@ -904,11 +687,9 @@ function startRecording(onNewScreenshots) {
 
             // 2. Check monitor changes (monitor of the active window).
             if (checkDisplayChange && meta.activeWindowRect && meta.monitors && meta.monitors.length > 0) {
-                // Calculate the center of the window.
                 const centerX = meta.activeWindowRect.Left + (meta.activeWindowRect.Right - meta.activeWindowRect.Left) / 2;
                 const centerY = meta.activeWindowRect.Top + (meta.activeWindowRect.Bottom - meta.activeWindowRect.Top) / 2;
                 
-                // Find which monitor contains the center.
                 let currentDisplayId = null;
                 for (const m of meta.monitors) {
                     const b = m.Bounds;
@@ -925,11 +706,8 @@ function startRecording(onNewScreenshots) {
                     lastActiveDisplayId = currentDisplayId;
                     
                     if (!isFirstCheck) {
-                        // Trigger screenshot after a delay.
                         if (displayChangeTimeout) clearTimeout(displayChangeTimeout);
-                        
                         const delay = getDisplayChangeDelay();
-                        console.log(`Scheduling out-of-turn screenshot in ${delay}s due to display focus change`);
                         displayChangeTimeout = setTimeout(() => {
                             takeScreenshots(currentOnNewScreenshots);
                         }, delay * 1000);
@@ -937,11 +715,18 @@ function startRecording(onNewScreenshots) {
                 }
             }
         } catch (e) {
-            console.error('Window monitoring failed', e);
+            console.error('Metadata collection failed', e);
+        } finally {
+            windowMonitorCheckRunning = false;
         }
-    }, 2000);
+    };
+
+    // Run every 4 seconds.
+    metaDataInterval = setInterval(runMetadataLoop, 4000);
+    // Initial fetch.
+    runMetadataLoop();
     
-    takeScreenshots(currentOnNewScreenshots); // Sofort starten
+    takeScreenshots(currentOnNewScreenshots); // Start immediately
 }
 
 // Watch for config changes
@@ -979,6 +764,19 @@ async function runBackgroundIndexing() {
                         const files = fs.readdirSync(dayDir);
                         const timeGroups = {};
 
+                        // Zuerst Metadaten-Dateien finden.
+                        files.forEach(file => {
+                            const metaMatch = file.match(/^meta_(\d{2}-\d{2}-\d{2})\.json$/);
+                            if (metaMatch) {
+                                const time = metaMatch[1];
+                                try {
+                                    const meta = JSON.parse(fs.readFileSync(path.join(dayDir, file), 'utf8'));
+                                    timeGroups[time] = { time, files: {}, date: dateStr, meta: meta };
+                                } catch (e) {}
+                            }
+                        });
+
+                        // Dann Screenshots zuordnen.
                         files.forEach(file => {
                             if (file.startsWith('screen')) {
                                 const screenIdx = file.replace('screen', '');
@@ -989,7 +787,9 @@ async function runBackgroundIndexing() {
                                         const timeMatch = img.match(/^(\d{2}-\d{2}-\d{2})\.(jpg|jpeg|png)$/i);
                                         if (timeMatch) {
                                             const time = timeMatch[1];
-                                            if (!timeGroups[time]) timeGroups[time] = { time, files: {}, date: dateStr };
+                                            if (!timeGroups[time]) {
+                                                timeGroups[time] = { time, files: {}, date: dateStr, meta: null };
+                                            }
                                             timeGroups[time].files[screenIdx] = path.join(screenDir, img);
                                         }
                                     });
@@ -999,12 +799,24 @@ async function runBackgroundIndexing() {
 
                         for (const time in timeGroups) {
                             const group = timeGroups[time];
-                            items.push({
+                            const item = {
                                 date: group.date,
                                 time: group.time,
                                 timestamp: new Date(`${group.date}T${group.time.replace(/-/g, ':')}`).getTime(),
                                 files: group.files
-                            });
+                            };
+
+                            if (group.meta) {
+                                if (group.meta.titles) item.titles = group.meta.titles;
+                                if (group.meta.activeWindow) item.activeWindow = group.meta.activeWindow;
+                                if (group.meta.files || group.meta.openFiles) item.openFiles = group.meta.files || group.meta.openFiles;
+                                if (group.meta.urls) item.urls = group.meta.urls;
+                                if (group.meta.ocrText) item.ocrText = group.meta.ocrText;
+                                if (group.meta.uiText) item.uiText = group.meta.uiText;
+                                if (group.meta.calls) item.calls = group.meta.calls;
+                            }
+
+                            items.push(item);
 
                             if (items.length >= 500) {
                                 const result = saveCapturesBatch(items);
@@ -1042,4 +854,8 @@ app.whenReady().then(() => {
 app.on('window-all-closed', (e) => {
     // Keep the tray app open.
     e.preventDefault();
+});
+
+app.on('before-quit', () => {
+    powershellService.stop();
 });

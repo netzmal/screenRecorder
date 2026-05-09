@@ -1,6 +1,8 @@
 const { exec } = require('child_process');
 const path = require('path');
 const fs = require('fs');
+const os = require('os');
+const crypto = require('crypto');
 
 function quotePowerShellString(value) {
     return `'${String(value).replace(/'/g, "''")}'`;
@@ -60,58 +62,80 @@ async function runWindowsOcrBatch(imagePaths, scriptPath, onProgress = null) {
                 return;
             }
 
-            const pathsArg = validPaths.map(quotePowerShellString).join(',');
-            const command = `PowerShell -NoProfile -ExecutionPolicy Bypass -Command "& ${quotePowerShellString(scriptPath)} -imagePaths ${pathsArg}"`;
+            const listFile = path.join(os.tmpdir(), `ocr-paths-${crypto.randomBytes(4).toString('hex')}.txt`);
+            try {
+                fs.writeFileSync(listFile, validPaths.join('\r\n'), 'utf8');
+                
+                const command = `PowerShell -NoProfile -ExecutionPolicy Bypass -Command "& ${quotePowerShellString(scriptPath)} -listFile ${quotePowerShellString(listFile)}"`;
 
-            const batchTimeoutMs = Math.max(120000, currentBatch.length * 15000);
-            exec(command, { encoding: 'utf8', maxBuffer: 10 * 1024 * 1024, timeout: batchTimeoutMs }, (error, stdout, stderr) => {
-                if (error) {
-                    console.error('Windows OCR Batch Error:', error);
-                    if (stderr) console.error('Windows OCR Stderr:', stderr);
-                }
+                const batchTimeoutMs = Math.max(120000, currentBatch.length * 15000);
+                exec(command, { encoding: 'utf8', maxBuffer: 10 * 1024 * 1024, timeout: batchTimeoutMs }, (error, stdout, stderr) => {
+                    // Cleanup temp file.
+                    try { 
+                        if (fs.existsSync(listFile)) {
+                            fs.unlinkSync(listFile); 
+                        }
+                    } catch (e) {
+                        console.warn('Failed to cleanup OCR list file:', e);
+                    }
 
-                const batchResults = {};
-                if (stdout) {
-                    const sections = stdout.split('---START---');
-                    sections.forEach(section => {
-                        if (section.includes('---END---')) {
-                            const pathMatch = section.match(/PATH:(.*)/);
-                            const textMatch = section.match(/TEXT:([\s\S]*?)---END---/);
-                            const errorMatch = section.match(/ERROR:(.*)/);
+                    if (error) {
+                        console.error('Windows OCR Batch Error:', error);
+                        if (stderr) console.error('Windows OCR Stderr:', stderr);
+                    }
 
-                            if (pathMatch) {
-                                const p = path.normalize(pathMatch[1].trim()).toLowerCase();
-                                if (textMatch) {
-                                    const text = textMatch[1].trim();
-                                    const value = isOcrErrorText(text) ? normalizeOcrError(text) : text;
-                                    results[p] = value;
-                                    batchResults[p] = value;
-                                } else if (errorMatch) {
-                                    const err = `Error: ${errorMatch[1].trim()}`;
-                                    results[p] = err;
-                                    batchResults[p] = err;
-                                    console.warn(`OCR Error for ${p}:`, errorMatch[1].trim());
+                    const batchResults = {};
+                    if (stdout) {
+                        const sections = stdout.split('---START---');
+                        sections.forEach(section => {
+                            if (section.includes('---END---')) {
+                                const pathMatch = section.match(/PATH:(.*)/);
+                                const textMatch = section.match(/TEXT:([\s\S]*?)---END---/);
+                                const errorMatch = section.match(/ERROR:(.*)/);
+
+                                if (pathMatch) {
+                                    const p = path.normalize(pathMatch[1].trim()).toLowerCase();
+                                    if (textMatch) {
+                                        const text = textMatch[1].trim();
+                                        const value = isOcrErrorText(text) ? normalizeOcrError(text) : text;
+                                        results[p] = value;
+                                        batchResults[p] = value;
+                                    } else if (errorMatch) {
+                                        const err = `Error: ${errorMatch[1].trim()}`;
+                                        results[p] = err;
+                                        batchResults[p] = err;
+                                        console.warn(`OCR Error for ${p}:`, errorMatch[1].trim());
+                                    }
                                 }
                             }
-                        }
-                    });
-                }
+                        });
+                    }
 
+                    processedCount += batchSize;
+
+                    if (onProgress) {
+                        onProgress({
+                            current: processedCount,
+                            total: imagePaths.length,
+                            batchSize: currentBatch.length,
+                            validCount: validPaths.length,
+                            paths: currentBatch,
+                            results: batchResults
+                        });
+                    }
+
+                    processNextBatch();
+                });
+            } catch (err) {
+                console.error('Failed to create OCR list file or execute PowerShell:', err);
+                try { 
+                    if (fs.existsSync(listFile)) {
+                        fs.unlinkSync(listFile); 
+                    }
+                } catch (e) {}
                 processedCount += batchSize;
-
-                if (onProgress) {
-                    onProgress({
-                        current: processedCount,
-                        total: imagePaths.length,
-                        batchSize: currentBatch.length,
-                        validCount: validPaths.length,
-                        paths: currentBatch,
-                        results: batchResults
-                    });
-                }
-
                 processNextBatch();
-            });
+            }
         };
 
         processNextBatch();

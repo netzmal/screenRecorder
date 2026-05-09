@@ -49,7 +49,7 @@ async function getTesseractWorker() {
     const fastMode = getOcrFastMode();
     const parameters = {
         tessedit_pageseg_mode: 3,
-        tessedit_char_whitelist: '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZÃ¤Ã¶Ã¼Ã„Ã–ÃœÃŸ.,:;!?()[]{}@/\\- '
+        tessedit_char_whitelist: '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZäöüÄÖÜß.,:;!?()[]{}@/\\- '
     };
     if (fastMode) {
         Object.assign(parameters, {

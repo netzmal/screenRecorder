@@ -1,4 +1,11 @@
-param([string[]]$imagePaths)
+param(
+    [string[]]$imagePaths,
+    [string]$listFile
+)
+
+if ($listFile -and (Test-Path $listFile)) {
+    $imagePaths = Get-Content $listFile -Encoding UTF8
+}
 
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 

@@ -265,6 +265,8 @@ if ($enable) {
     # Set normal user values.
     # ------------------------------------------------------------
 
+    # Ensure the path is stored correctly. 
+    # For REG_SZ SCRNSAVE.EXE, quotes are typically NOT needed and can cause issues if double-quoted by the OS.
     Set-RegString -Path $registryPath -Name "SCRNSAVE.EXE" -Value $cleanPath
     Set-RegString -Path $registryPath -Name "ScreenSaveActive" -Value "1"
     Set-RegString -Path $registryPath -Name "ScreenSaveTimeOut" -Value "$timeoutSeconds"
@@ -366,11 +368,13 @@ public class Win32 {
 
 else {
     Set-RegString -Path $registryPath -Name "ScreenSaveActive" -Value "0"
+    Remove-ItemProperty -Path $registryPath -Name "SCRNSAVE.EXE" -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path $registryPath -Name "ScreenSaverIsSecure" -ErrorAction SilentlyContinue
 
     if (Test-Path $policyPath) {
-        Set-ItemProperty -Path $policyPath -Name "ScreenSaveActive" -Value "0" -Type String -ErrorAction SilentlyContinue
-
-        # When disabling, also remove the policy path.
+        Remove-ItemProperty -Path $policyPath -Name "ScreenSaveActive" -ErrorAction SilentlyContinue
+        Remove-ItemProperty -Path $policyPath -Name "ScreenSaveTimeOut" -ErrorAction SilentlyContinue
+        Remove-ItemProperty -Path $policyPath -Name "ScreenSaverIsSecure" -ErrorAction SilentlyContinue
         Remove-ItemProperty -Path $policyPath -Name "SCRNSAVE.EXE" -ErrorAction SilentlyContinue
     }
 
@@ -387,5 +391,5 @@ public class Win32 {
     # SPI_SETSCREENSAVEACTIVE = 0x0011
     [Win32]::SystemParametersInfo(0x0011, 0, [IntPtr]::Zero, 3) | Out-Null
 
-    Write-Host "Screensaver disabled."
+    Write-Host "Screensaver disabled and entry removed."
 }

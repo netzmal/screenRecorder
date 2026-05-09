@@ -1,6 +1,6 @@
 {
   "name": "screen-recorder-installer",
-  "version": "1.0.67",
+  "version": "1.0.80",
   "description": "Installer for Screen Recorder",
   "author": "Tim David Saxen",
   "main": "viewer/main.js",

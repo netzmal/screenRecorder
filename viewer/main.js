@@ -1,6 +1,21 @@
 const { app, BrowserWindow, Menu, dialog, ipcMain, shell, clipboard, screen, Notification, net, powerSaveBlocker, nativeImage } = require('electron');
 const path = require('path');
 
+const VIEWER_START_ARG = 'viewer';
+const TRAY_START_ARG = 'tray';
+const WINDOWS_VIEWER_APP_USER_MODEL_ID = 'com.screen.recorder.viewer';
+const WINDOWS_TRAY_APP_USER_MODEL_ID = 'com.screen.recorder.tray';
+const isTrayStartArg = process.argv.includes(TRAY_START_ARG);
+const windowsProcessAppUserModelId = isTrayStartArg ? WINDOWS_TRAY_APP_USER_MODEL_ID : WINDOWS_VIEWER_APP_USER_MODEL_ID;
+
+// Set the app name as early as possible so electron-store and other modules use the same path.
+if (app) {
+    app.name = 'screen-recorder-shared';
+    if (process.platform === 'win32') {
+        app.setAppUserModelId(windowsProcessAppUserModelId);
+    }
+}
+
 // --- Single Instance Lock & Argument Handling ---
 // This must happen as early as possible, before loading the config modules.
 const isScreensaverPreview = process.argv.find(arg => arg.toLowerCase().startsWith('/p'));
@@ -11,20 +26,17 @@ if (isScreensaverPreview) {
     process.exit(0);
     return;
 }
-
+    
 if (isScreensaverStartArg) {
-    // Set app.name in advance (same as config.js) so global.realUserData points to the same
+    // global.realUserData points to the same
     // path as tray/viewer; otherwise they would use different databases.
-    app.name = 'screen-recorder-shared';
     global.realUserData = app.getPath('userData');
+        
+    // Load config now while the path is still correct.
+    const { getIsScreensaverRunning } = require('../shared/config');
+    
     // Own subdirectory for the screensaver to bypass the single-instance lock.
     app.setPath('userData', path.join(global.realUserData, 'screensaver-proc'));
-} else {
-    const gotTheLock = app.requestSingleInstanceLock();
-    if (!gotTheLock) {
-        app.quit();
-        return;
-    }
 }
 // ------------------------------------------------
 
@@ -37,51 +49,101 @@ const i18n = require('../shared/i18n');
 const { runWindowsOcrBatch } = require('../shared/ocr-helper');
 const { exec, spawn } = require('child_process');
 
-// Set AppUserModelId for notifications on Windows.
-if (process.platform === 'win32') {
-    app.setAppUserModelId('com.screen.recorder');
-}
-
 let mainWindow;
 let configWindow;
 let isTrayRunning = false;
 
-// Single instance event handler (only when this is the primary process).
-app.on('second-instance', (event, commandLine, workingDirectory) => {
-    const args = commandLine;
-    const isScreensaverConfig = args.find(arg => arg.toLowerCase().startsWith('/c'));
-    const isTray = args.includes('tray');
-
-    if (isScreensaverConfig) {
-        // Open configuration in this instance.
-        if (!mainWindow) {
-            createMainWindow();
-            setTimeout(() => {
-                if (mainWindow) {
-                    mainWindow.webContents.send('open-tab', 'ocr');
-                    createConfigWindow();
-                }
-            }, 1000);
-        } else {
-            mainWindow.webContents.send('open-tab', 'ocr');
-            createConfigWindow();
-            if (mainWindow.isMinimized()) mainWindow.restore();
-            mainWindow.focus();
-        }
-    } else if (isTray) {
-        // Load tray logic.
-        isTrayRunning = true;
-        require('../tray/main.js');
-    } else {
-        // Normal viewer startup.
-        if (mainWindow) {
-            if (mainWindow.isMinimized()) mainWindow.restore();
-            mainWindow.focus();
-        } else {
-            createMainWindow();
-        }
+// Sets the Windows app identity before any BrowserWindow is created.
+function configureWindowsAppIdentity() {
+    if (process.platform === 'win32') {
+        app.setAppUserModelId(windowsProcessAppUserModelId);
     }
-});
+}
+
+// Returns the packaged icon path because Windows taskbar APIs cannot read ASAR paths reliably.
+function getPackagedViewerIconPath(iconFileName) {
+    if (!app.isPackaged) return null;
+
+    const resourceIconPath = path.join(process.resourcesPath, 'viewer', 'assets', iconFileName);
+    return fs.existsSync(resourceIconPath) ? resourceIconPath : null;
+}
+
+// Returns the best viewer icon for the current platform.
+function getViewerIconPath() {
+    const preferredIconFileName = process.platform === 'win32' ? 'icon.ico' : 'icon.png';
+    const fallbackIconFileName = preferredIconFileName === 'icon.ico' ? 'icon.png' : 'icon.ico';
+    const iconCandidates = [
+        getPackagedViewerIconPath(preferredIconFileName),
+        getPackagedViewerIconPath(fallbackIconFileName),
+        path.join(__dirname, 'assets', preferredIconFileName),
+        path.join(__dirname, 'assets', fallbackIconFileName)
+    ].filter(Boolean);
+
+    const existingIconPath = iconCandidates.find(candidate => fs.existsSync(candidate));
+    if (existingIconPath) return existingIconPath;
+
+    console.error('Viewer icon file not found. Checked paths:', iconCandidates);
+    return iconCandidates[0];
+}
+
+// Loads the viewer icon and logs useful diagnostics for Windows icon issues.
+function createViewerIcon(iconPath) {
+    const icon = nativeImage.createFromPath(iconPath);
+    if (icon.isEmpty()) {
+        console.error('Failed to load icon from:', iconPath);
+    } else {
+        console.log('Icon loaded successfully from:', iconPath, 'Size:', icon.getSize());
+    }
+
+    return icon;
+}
+
+// Builds the command Windows should use when the taskbar button is relaunched.
+function getViewerRelaunchCommand() {
+    if (app.isPackaged) {
+        return `"${process.execPath}" ${VIEWER_START_ARG}`;
+    }
+
+    const viewerPath = path.join(__dirname);
+    return `"${process.execPath}" "${viewerPath}"`;
+}
+
+// Sets the Windows icon and relaunch metadata on one BrowserWindow.
+function setWindowIconDetails(window, iconPath, icon) {
+    if (!window || window.isDestroyed()) return;
+    window.setIcon(icon.isEmpty() ? iconPath : icon);
+    window.setAppDetails({
+        appId: WINDOWS_VIEWER_APP_USER_MODEL_ID,
+        appIconPath: iconPath,
+        appIconIndex: 0,
+        relaunchCommand: getViewerRelaunchCommand(),
+        relaunchDisplayName: 'Screen Recorder'
+    });
+}
+
+// Applies the icon again after Windows has created the taskbar button.
+function applyWindowIcon(window, iconPath, icon) {
+    if (process.platform !== 'win32') return;
+
+    const setIcon = () => setWindowIconDetails(window, iconPath, icon);
+
+    setIcon();
+    window.once('ready-to-show', setIcon);
+    window.on('show', setIcon);
+    window.on('focus', setIcon);
+}
+
+// Shows the window only after Windows icon metadata has been applied.
+function showWindowAfterIconIsReady(window, iconPath, icon) {
+    if (process.platform !== 'win32') return;
+
+    window.once('ready-to-show', () => {
+        setWindowIconDetails(window, iconPath, icon);
+        if (!window.isDestroyed()) window.show();
+    });
+}
+
+configureWindowsAppIdentity();
 
 // Run config migration.
 migrateConfig();
@@ -115,23 +177,14 @@ console.log('Autostart Enabled:', getAutostart());
 console.log('--------------------------------------');
 
 function createMainWindow() {
-    let iconPath = path.join(__dirname, 'assets', 'icon.png');
-    if (process.platform === 'win32') {
-        const icoPath = path.join(__dirname, 'assets', 'icon.ico');
-        if (fs.existsSync(icoPath)) iconPath = icoPath;
-    }
-
-    const icon = nativeImage.createFromPath(iconPath);
-    if (icon.isEmpty()) {
-        console.error('Failed to load icon from:', iconPath);
-    } else {
-        console.log('Icon loaded successfully from:', iconPath, 'Size:', icon.getSize());
-    }
+    const iconPath = getViewerIconPath();
+    const icon = createViewerIcon(iconPath);
 
     mainWindow = new BrowserWindow({
         width: 1200,
         height: 800,
-        icon: icon,
+        show: process.platform !== 'win32',
+        icon: icon.isEmpty() ? iconPath : icon,
         title: `${i18n.t('viewer.title')} - v${app.getVersion()}`,
         webPreferences: {
             nodeIntegration: true,
@@ -139,10 +192,8 @@ function createMainWindow() {
         }
     });
 
-    // Explicitly set the icon (sometimes needed on Windows).
-    if (process.platform === 'win32') {
-        mainWindow.setIcon(icon);
-    }
+    applyWindowIcon(mainWindow, iconPath, icon);
+    showWindowAfterIconIsReady(mainWindow, iconPath, icon);
 
     mainWindow.loadFile(path.join(__dirname, 'viewer.html'));
 
@@ -159,11 +210,7 @@ function createMainWindow() {
 
 ipcMain.on('test-notification', (event) => {
     if (Notification.isSupported()) {
-        let iconPath = path.join(__dirname, 'assets', 'icon.png');
-        if (process.platform === 'win32') {
-            const icoPath = path.join(__dirname, 'assets', 'icon.ico');
-            if (fs.existsSync(icoPath)) iconPath = icoPath;
-        }
+        const iconPath = getViewerIconPath();
 
         new Notification({
             title: 'Test Benachrichtigung',
@@ -186,31 +233,25 @@ function createConfigWindow() {
         return;
     }
 
-    let iconPath = path.join(__dirname, 'assets', 'icon.png');
-    if (process.platform === 'win32') {
-        const icoPath = path.join(__dirname, 'assets', 'icon.ico');
-        if (fs.existsSync(icoPath)) iconPath = icoPath;
-    }
-
-    const icon = nativeImage.createFromPath(iconPath);
+    const iconPath = getViewerIconPath();
+    const icon = createViewerIcon(iconPath);
 
     configWindow = new BrowserWindow({
         width: 800,
         height: 600,
+        show: process.platform !== 'win32',
         parent: mainWindow,
         modal: true,
         title: `${i18n.t('config.title')} - v${app.getVersion()}`,
-        icon: icon,
+        icon: icon.isEmpty() ? iconPath : icon,
         webPreferences: {
             nodeIntegration: true,
             contextIsolation: false
         }
     });
 
-    // Explicitly set the icon.
-    if (process.platform === 'win32') {
-        configWindow.setIcon(icon);
-    }
+    applyWindowIcon(configWindow, iconPath, icon);
+    showWindowAfterIconIsReady(configWindow, iconPath, icon);
 
     configWindow.loadFile(path.join(__dirname, 'config.html'));
     configWindow.setMenu(null); // No menu for config window
@@ -221,18 +262,21 @@ function createConfigWindow() {
 }
 
 app.whenReady().then(() => {
-    const isScreensaverStart = process.argv.includes('screensaver') || 
-                              process.argv.find(arg => arg.toLowerCase().startsWith('/s'));
     const isScreensaverConfig = process.argv.find(arg => arg.toLowerCase().startsWith('/c'));
 
     // If started as "tray", load tray logic; otherwise start the viewer.
-    if (process.argv.includes('tray')) {
+    if (isTrayStartArg) {
         // Ensure migration also runs in tray mode if this is the first startup.
         migrateConfig();
         isTrayRunning = true;
         require('../tray/main.js');
-    } else if (isScreensaverStart) {
-        require('../screensaver/main.js');
+    } else if (isScreensaverStartArg) {
+        console.log('Starting screensaver module...');
+        try {
+            require('../screensaver/main.js');
+        } catch (e) {
+            console.error('Failed to load screensaver module:', e);
+        }
     } else if (isScreensaverConfig) {
         // If the screensaver should be configured, open the config window directly.
         createMainWindow();
@@ -339,6 +383,7 @@ ipcMain.on('get-config', async (event) => {
                     urls: i18n.t('viewer.tabs.urls'),
                     calls: i18n.t('viewer.tabs.calls'),
                     ocr: i18n.t('viewer.tabs.ocr'),
+                    ui_text: i18n.t('viewer.tabs.ui_text'),
                     summary: i18n.t('viewer.tabs.summary')
                 },
                 meta: {
@@ -347,6 +392,7 @@ ipcMain.on('get-config', async (event) => {
                     loading_urls: i18n.t('viewer.meta.loading_urls'),
                     loading_ocr: i18n.t('viewer.meta.loading_ocr'),
                     no_ocr: i18n.t('viewer.meta.no_ocr'),
+                    no_ui_text: i18n.t('viewer.meta.no_ui_text'),
                     no_titles: i18n.t('viewer.meta.no_titles'),
                     no_titles_list: i18n.t('viewer.meta.no_titles_list'),
                     no_files: i18n.t('viewer.meta.no_files'),
@@ -549,6 +595,8 @@ ipcMain.on('set-autostart', (event, enabled) => {
     
     const exePath = process.execPath;
     const args = 'tray';
+    const iconPath = getViewerIconPath();
+    const workingDirectory = path.dirname(exePath);
     
     if (enabled) {
         // Use PowerShell to create the LNK because there is no native module for it.
@@ -558,6 +606,8 @@ ipcMain.on('set-autostart', (event, enabled) => {
             `$Shortcut = $WshShell.CreateShortcut('${startupPath.replace(/'/g, "''")}')`,
             `$Shortcut.TargetPath = '${exePath.replace(/'/g, "''")}'`,
             `$Shortcut.Arguments = '${args}'`,
+            `$Shortcut.WorkingDirectory = '${workingDirectory.replace(/'/g, "''")}'`,
+            `$Shortcut.IconLocation = '${iconPath.replace(/'/g, "''")},0'`,
             `$Shortcut.Save()`
         ].join('; ');
 
@@ -579,13 +629,6 @@ ipcMain.handle('get-capture-meta', async (event, { date, time }) => {
     return getCaptureByDateTime(date, time);
 });
 
-ipcMain.handle('get-day-urls', async (event, date) => {
-    return getDayUrls(date);
-});
-
-ipcMain.handle('get-day-calls', async (event, date) => {
-    return getDayCalls(date);
-});
 
 ipcMain.handle('get-day-summary', async (event, date) => {
     return getDaySummary(date, i18n.getLocale());
@@ -806,6 +849,7 @@ ipcMain.handle('migrate-data', async (event) => {
                                 if (group.meta.files || group.meta.openFiles) item.openFiles = group.meta.files || group.meta.openFiles;
                                 if (group.meta.urls) item.urls = group.meta.urls;
                                 if (group.meta.ocrText) item.ocrText = group.meta.ocrText;
+                                if (group.meta.uiText) item.uiText = group.meta.uiText;
                                 if (group.meta.calls) item.calls = group.meta.calls;
                             }
 

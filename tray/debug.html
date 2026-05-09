@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Screen Recorder Debug</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            margin: 0;
+            padding: 10px;
+            background-color: #f5f5f5;
+            color: #333;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+        }
+        .tabs {
+            display: flex;
+            border-bottom: 1px solid #ddd;
+            margin-bottom: 10px;
+            flex-shrink: 0;
+        }
+        .tab {
+            padding: 8px 15px;
+            cursor: pointer;
+            border: 1px solid transparent;
+            border-bottom: none;
+            margin-right: 5px;
+            background-color: #eee;
+            border-radius: 4px 4px 0 0;
+        }
+        .tab.active {
+            background-color: #fff;
+            border-color: #ddd;
+            border-bottom: 1px solid #fff;
+            margin-bottom: -1px;
+            font-weight: bold;
+        }
+        .content {
+            flex-grow: 1;
+            background-color: #fff;
+            border: 1px solid #ddd;
+            padding: 10px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+            font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+            font-size: 12px;
+        }
+        .meta-item {
+            margin-bottom: 5px;
+            padding-bottom: 5px;
+            border-bottom: 1px solid #eee;
+        }
+        .update-info {
+            font-size: 10px;
+            color: #888;
+            margin-top: 5px;
+            text-align: right;
+            flex-shrink: 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="tabs" id="tabBar">
+        <div class="tab active" data-target="titles">Titles</div>
+        <div class="tab" data-target="files">Files</div>
+        <div class="tab" data-target="urls">URLs</div>
+        <div class="tab" data-target="calls">Calls</div>
+        <div class="tab" data-target="monitors">Monitors</div>
+        <div class="tab" data-target="uiText">UI Text</div>
+        <div class="tab" data-target="raw">Raw JSON</div>
+    </div>
+    <div id="categoryTimestamp" style="font-weight: bold; border: 1px solid #ddd; border-bottom: none; padding: 8px 10px; color: #555; font-size: 11px; background: #fff; margin: 0; flex-shrink: 0;">
+        Timestamp: -
+    </div>
+    <div class="content" id="tabContent">
+        <div id="categoryData">
+            Loading...
+        </div>
+    </div>
+    <div class="update-info" id="updateInfo">
+        Last Check: - | UI refresh: -
+    </div>
+
+    <script>
+        const { ipcRenderer } = require('electron');
+        
+        let currentData = null;
+        let activeTab = 'titles';
+
+        function updateDisplay() {
+            const dataContainer = document.getElementById('categoryData');
+            const tsContainer = document.getElementById('categoryTimestamp');
+            const updateInfo = document.getElementById('updateInfo');
+            
+            if (!currentData) {
+                dataContainer.textContent = 'No data available.';
+                tsContainer.textContent = 'Timestamp: -';
+                updateInfo.textContent = 'UI refresh: -';
+                return;
+            }
+
+            // Update content based on tab
+            if (activeTab === 'raw') {
+                dataContainer.textContent = JSON.stringify(currentData, null, 2);
+            } else if (activeTab === 'monitors') {
+                dataContainer.textContent = JSON.stringify(currentData.monitors, null, 2);
+            } else if (activeTab === 'uiText') {
+                dataContainer.textContent = currentData.uiText || 'No UI text captured.';
+            } else {
+                const list = currentData[activeTab];
+                if (Array.isArray(list)) {
+                    if (list.length === 0) {
+                        dataContainer.textContent = 'No entries found.';
+                    } else {
+                        dataContainer.textContent = list.join('\n');
+                    }
+                } else if (activeTab === 'titles' && currentData.activeWindow) {
+                    dataContainer.textContent = `Active Window: ${currentData.activeWindow}\n\nNo other titles.`;
+                } else {
+                    dataContainer.textContent = 'No data for this category.';
+                }
+            }
+            
+            // Update timestamp for current category
+            let timestamp = null;
+            if (currentData.timestamps) {
+                if (activeTab === 'raw') {
+                    // For raw, show the latest timestamp of any category
+                    const tsValues = Object.values(currentData.timestamps).filter(v => v !== null);
+                    if (tsValues.length > 0) {
+                        timestamp = tsValues.sort().reverse()[0];
+                    }
+                } else if (currentData.timestamps[activeTab]) {
+                    timestamp = currentData.timestamps[activeTab];
+                }
+            }
+            
+            const timeStr = timestamp ? new Date(timestamp).toLocaleTimeString() : 'Never updated';
+            const dateStr = timestamp ? new Date(timestamp).toLocaleDateString() : '';
+            
+            tsContainer.textContent = `Last change: ${timeStr} ${dateStr}`;
+            
+            const lastCheckStr = currentData.lastCheck ? new Date(currentData.lastCheck).toLocaleTimeString() : '-';
+            updateInfo.textContent = `Last Check: ${lastCheckStr} | UI refresh: ${new Date().toLocaleTimeString()}`;
+        }
+
+        // Tab switching
+        document.getElementById('tabBar').addEventListener('click', (e) => {
+            if (e.target.classList.contains('tab')) {
+                document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+                e.target.classList.add('active');
+                activeTab = e.target.getAttribute('data-target');
+                updateDisplay();
+            }
+        });
+
+        // Listen for data updates
+        ipcRenderer.on('debug-data', (event, data) => {
+            currentData = data;
+            updateDisplay();
+        });
+
+        // Request initial data
+        ipcRenderer.send('get-debug-data');
+    </script>
+</body>
+</html>

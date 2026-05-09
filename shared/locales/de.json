@@ -19,6 +19,7 @@
       "urls": "URLs",
       "calls": "Anrufe",
       "ocr": "OCR/Text",
+      "ui_text": "UI Text",
       "summary": "KI-Zusammenfassung"
     },
     "meta": {
@@ -27,6 +28,7 @@
       "loading_urls": "Lade URLs...",
       "loading_ocr": "Lade OCR Text...",
       "no_ocr": "Kein OCR Text vorhanden oder Funktion deaktiviert.",
+      "no_ui_text": "Kein UI Text vorhanden.",
       "no_titles": "Keine Fenstertitel in Metadaten gefunden",
       "no_titles_list": "Keine Titelliste in Metadaten vorhanden",
       "no_files": "Keine offenen Dateien erfasst",
@@ -40,8 +42,7 @@
       "col_url": "URL",
       "col_title": "Fenstertitel",
       "col_file": "Dateipfad",
-      "col_call": "Anruf",
-      "screensaver_test": "Bildschirmschoner testen"
+      "col_call": "Anruf"
     },
     "ai": {
       "title": "KI-Tageszusammenfassung",
@@ -65,12 +66,13 @@
     "summary_parts": {
       "title": "Aktivitäts-Zusammenfassung für den {date}",
       "prompt_intro": "Kopiere diesen Text in ChatGPT mit dem Prompt:",
-      "prompt_text": "\"Analysiere meine Aktivitäten anhand der Fenstertitel, Dateipfade, URLs und OCR-Texte. Gruppiere sie nach Kundenprojekten oder Themen. Gib für jedes Thema die geschätzte Gesamtdauer an und erstelle eine Liste der erledigten Aufgaben.\"",
+      "prompt_text": "\"Analysiere meine Aktivitäten anhand der Fenstertitel, Dateipfade, URLs, UI-Texte und OCR-Texte. Gruppiere sie nach Kundenprojekten oder Themen. Gib für jedes Thema die geschätzte Gesamtdauer an und erstelle eine Liste der erledigten Aufgaben.\"",
       "fokus": "Fokus",
       "window": "Fenster",
       "url": "URL",
       "file": "Datei",
       "call": "Anruf",
+      "ui_text": "Inhalt (UI Text)",
       "ocr": "Inhalt (OCR)",
       "until": "bis",
       "unknown": "Unbekannt",
@@ -121,6 +123,7 @@
     "tooltip": "Screen Recorder",
     "menu": {
       "show_viewer": "Viewer öffnen",
+      "debug": "Debug",
       "settings": "Einstellungen",
       "quit": "Beenden",
       "pause": "Aufnahme pausieren",

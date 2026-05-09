@@ -549,6 +549,7 @@
                 <div id="tab-urls-btn" class="tab" onclick="switchTab('tab-urls')">URLs</div>
                 <div id="tab-calls-btn" class="tab" onclick="switchTab('tab-calls')">Calls</div>
                 <div id="tab-ocr-btn" class="tab" onclick="switchTab('tab-ocr')">OCR</div>
+                <div id="tab-ui-text-btn" class="tab" onclick="switchTab('tab-ui-text')">UI Text</div>
                 <div id="tab-summary-btn" class="tab" onclick="switchTab('tab-summary')">AI Summary</div>
             </div>
             <div id="tab-content">
@@ -576,7 +577,7 @@
                 <div id="tab-urls" class="tab-pane">
                     <table class="meta-table">
                         <thead>
-                            <tr><th style="width: 80px;">Time</th><th style="width: 200px;">Window</th><th>URL</th></tr>
+                            <tr><th style="width: 80px;">Time</th><th>URL</th></tr>
                         </thead>
                         <tbody id="urls-list"></tbody>
                     </table>
@@ -597,6 +598,11 @@
                             <button id="win-screensaver-settings-btn" class="btn btn-secondary" onclick="openScreensaverSettings()">Windows Bildschirmschoner</button>
                         </div>
                         <pre id="ocr-text-display" style="flex: 1; overflow-y: auto; background: #f8f8f8; border: 1px solid #ccc; padding: 15px; white-space: pre-wrap; font-family: 'Courier New', Courier, monospace; font-size: 13px;"></pre>
+                    </div>
+                </div>
+                <div id="tab-ui-text" class="tab-pane">
+                    <div style="padding: 10px; height: 100%; box-sizing: border-box; display: flex; flex-direction: column;">
+                        <pre id="ui-text-display" style="flex: 1; overflow-y: auto; background: #f8f8f8; border: 1px solid #ccc; padding: 15px; white-space: pre-wrap; font-family: 'Courier New', Courier, monospace; font-size: 13px;"></pre>
                     </div>
                 </div>
                 <div id="tab-summary" class="tab-pane">
@@ -684,6 +690,7 @@
         const urlsList = document.getElementById('urls-list');
         const callsList = document.getElementById('calls-list');
         const ocrTextDisplay = document.getElementById('ocr-text-display');
+        const uiTextDisplay = document.getElementById('ui-text-display');
         const summaryDisplay = document.getElementById('summary-display');
         const aiResultDisplay = document.getElementById('ai-result-display');
         const aiResultMarkdown = document.getElementById('ai-result-markdown');
@@ -868,6 +875,7 @@
             if (document.getElementById('tab-urls-btn')) document.getElementById('tab-urls-btn').innerText = translations.viewer.tabs.urls;
             if (document.getElementById('tab-calls-btn')) document.getElementById('tab-calls-btn').innerText = translations.viewer.tabs.calls;
             if (document.getElementById('tab-ocr-btn')) document.getElementById('tab-ocr-btn').innerText = translations.viewer.tabs.ocr;
+            if (document.getElementById('tab-ui-text-btn')) document.getElementById('tab-ui-text-btn').innerText = translations.viewer.tabs.ui_text;
             
             // Slider Info
             if (document.getElementById('time-slider')) {
@@ -1007,8 +1015,9 @@
             }
         };
 
-        timeSlider.onkeydown = (e) => {
+        window.addEventListener('keydown', (e) => {
             if (timeGroups.length === 0) return;
+            if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
 
             if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
                 e.preventDefault();
@@ -1026,8 +1035,10 @@
                     updateSlider();
                     displayCurrentTimeGroup();
                 }
+            } else if (e.key === 'Escape') {
+                closeFullscreen();
             }
-        };
+        });
 
         function findNearestTimeIndex(targetTimeStr) {
             if (timeGroups.length === 0) return null;
@@ -1623,6 +1634,12 @@
                     img.src = finalUrl;
                     img.onerror = (err) => console.error('Image load error for:', fullPath, err);
                     img.onclick = () => openFullscreen(img.src);
+                    img.onwheel = (e) => {
+                        e.preventDefault();
+                        if (fullscreenOverlay.style.display !== 'flex') {
+                            openFullscreen(img.src);
+                        }
+                    };
                     img.oncontextmenu = (e) => {
                         e.preventDefault();
                         showContextMenu(fullPath, e.clientX, e.clientY);
@@ -1659,15 +1676,17 @@
                 urlsList.innerHTML = '';
                 callsList.innerHTML = '';
                 ocrTextDisplay.innerText = '';
+                uiTextDisplay.innerText = '';
                 return;
             }
             
             // Show loading status for metadata.
             titlesList.innerHTML = `<tr><td style="color: #888; font-style: italic;">${translations.viewer.meta.loading_meta}</td></tr>`;
             filesList.innerHTML = `<tr><td style="color: #888; font-style: italic;">${translations.viewer.meta.loading_data}</td></tr>`;
-            urlsList.innerHTML = `<tr><td colspan="3" style="color: #888; font-style: italic;">${translations.viewer.meta.loading_urls}</td></tr>`;
+            urlsList.innerHTML = `<tr><td colspan="2" style="color: #888; font-style: italic;">${translations.viewer.meta.loading_urls}</td></tr>`;
             callsList.innerHTML = `<tr><td colspan="2" style="color: #888; font-style: italic;">${translations.viewer.meta.loading_meta}</td></tr>`;
             ocrTextDisplay.innerText = translations.viewer.meta.loading_ocr;
+            uiTextDisplay.innerText = translations.viewer.meta.loading_ocr; // Use same loading text
 
             // Load metadata from the database.
             try {
@@ -1703,6 +1722,7 @@
                 urlsList.innerHTML = '';
                 callsList.innerHTML = '';
                 ocrTextDisplay.innerText = translations.viewer.meta.no_ocr;
+                uiTextDisplay.innerText = translations.viewer.meta.no_ui_text;
 
                 if (meta) {
                     console.log('Rendering meta for:', groupTime);
@@ -1710,6 +1730,9 @@
 
                     if (meta.ocrText) {
                         ocrTextDisplay.innerText = meta.ocrText;
+                    }
+                    if (meta.uiText) {
+                        uiTextDisplay.innerText = meta.uiText;
                     }
                     if (meta.titles) {
                         const titles = Array.isArray(meta.titles) ? meta.titles : (typeof meta.titles === 'string' ? meta.titles.split(' | ') : []);
@@ -1753,14 +1776,13 @@
                             const trUrl = document.createElement('tr');
                             trUrl.innerHTML = `
                                 <td style="color: #666;">${group.time.replace(/-/g, ':')}</td>
-                                <td style="color: #666; max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${activeWindow}">${activeWindow}</td>
                                 <td style="color: #0078d4; cursor: pointer; text-decoration: underline;" onclick="shell.openExternal('${u}')">${u}</td>
                             `;
                             urlsList.appendChild(trUrl);
                         });
                     } else {
                         const tr = document.createElement('tr');
-                        tr.innerHTML = `<td colspan="3" style="color: #888; font-style: italic;">${translations.viewer.meta.no_urls}</td>`;
+                        tr.innerHTML = `<td colspan="2" style="color: #888; font-style: italic;">${translations.viewer.meta.no_urls}</td>`;
                         urlsList.appendChild(tr);
                     }
 
@@ -1790,12 +1812,13 @@
                     tr2.innerHTML = `<td style="color: #888; font-style: italic;">${translations.viewer.meta.no_more_data}</td>`;
                     filesList.appendChild(tr2);
 
-                    urlsList.innerHTML = `<tr><td colspan="3" style="color: #888; font-style: italic;">${translations.viewer.meta.no_more_data}</td></tr>`;
+                    urlsList.innerHTML = `<tr><td colspan="2" style="color: #888; font-style: italic;">${translations.viewer.meta.no_more_data}</td></tr>`;
                 }
             } catch (e) { 
                 console.error('Error loading meta from DB', e); 
                 titlesList.innerHTML = `<tr><td style="color: #d9534f;">${translations.common.error}: ${e.message}</td></tr>`;
                 ocrTextDisplay.innerText = translations.viewer.meta.not_found + ": " + e.message;
+                uiTextDisplay.innerText = translations.viewer.meta.not_found + ": " + e.message;
             }
 
             // Set CSS variable for grid columns.
@@ -1876,6 +1899,12 @@
             resetZoom();
         });
 
+        fullscreenImg.addEventListener('contextmenu', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            closeFullscreen();
+        });
+
         function showContextMenu(filePath, x, y) {
             // Simple custom context menu or direct Electron menu via IPC?
             // Since this is the renderer, send a signal to the main process.
@@ -1900,55 +1929,8 @@
             if (tabId === 'tab-summary') {
                 updateSummary();
             }
-            if (tabId === 'tab-urls') {
-                updateUrls();
-            }
-            if (tabId === 'tab-calls') {
-                updateCalls();
-            }
         }
 
-        async function updateUrls() {
-            urlsList.innerHTML = `<tr><td colspan="3" style="text-align: center; padding: 20px; color: #888;">${translations.viewer.meta.loading_urls}</td></tr>`;
-            try {
-                const dayUrls = await ipcRenderer.invoke('get-day-urls', selectedDate);
-                urlsList.innerHTML = '';
-                if (dayUrls.length === 0) {
-                    urlsList.innerHTML = `<tr><td colspan="3" style="text-align: center; padding: 20px; color: #888;">${translations.viewer.meta.no_urls}</td></tr>`;
-                    return;
-                }
-                dayUrls.forEach(item => {
-                    item.urls.forEach(url => {
-                        const tr = document.createElement('tr');
-                        tr.innerHTML = `<td>${item.time}</td><td>${item.activeWindow}</td><td><a href="#" onclick="shell.openExternal('${url}')">${url}</a></td>`;
-                        urlsList.appendChild(tr);
-                    });
-                });
-            } catch (err) {
-                urlsList.innerHTML = `<tr><td colspan="3">${translations.common.error}: ${err.message}</td></tr>`;
-            }
-        }
-
-        async function updateCalls() {
-            callsList.innerHTML = `<tr><td colspan="2" style="text-align: center; padding: 20px; color: #888;">${translations.viewer.meta.loading_meta}</td></tr>`;
-            try {
-                const dayCalls = await ipcRenderer.invoke('get-day-calls', selectedDate);
-                callsList.innerHTML = '';
-                if (dayCalls.length === 0) {
-                    callsList.innerHTML = `<tr><td colspan="2" style="text-align: center; padding: 20px; color: #888;">${translations.viewer.meta.no_calls}</td></tr>`;
-                    return;
-                }
-                dayCalls.forEach(item => {
-                    item.calls.forEach(call => {
-                        const tr = document.createElement('tr');
-                        tr.innerHTML = `<td>${item.time}</td><td>${call}</td>`;
-                        callsList.appendChild(tr);
-                    });
-                });
-            } catch (err) {
-                callsList.innerHTML = `<tr><td colspan="2">${translations.common.error}: ${err.message}</td></tr>`;
-            }
-        }
 
         async function updateSummary() {
             summaryDisplay.value = translations.common.loading;

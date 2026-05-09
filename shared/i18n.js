@@ -44,6 +44,10 @@ function init(forcedLocale = null) {
     }
   }
 
+  if (locale === currentLocale && Object.keys(translations).length > 0) {
+    return;
+  }
+
   currentLocale = locale;
   loadTranslations(locale);
 }
