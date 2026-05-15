@@ -1349,7 +1349,11 @@ ipcMain.on('start-batch-ocr', async (event) => {
             }
 
             for (let i = 0; i < workerCount; i++) {
-                const worker = await Tesseract.createWorker(lang, 1);
+                const langPath = path.join(__dirname, '..', 'shared', 'assets', 'ocr');
+                const worker = await Tesseract.createWorker(lang, 1, {
+                    langPath: langPath,
+                    cacheMethod: 'none'
+                });
                 await worker.setParameters(parameters);
                 scheduler.addWorker(worker);
             }

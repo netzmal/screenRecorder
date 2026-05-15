@@ -184,7 +184,13 @@ $height = [Math]::Max(1, $rect.Bottom - $rect.Top)
 async function getTesseractWorker() {
     if (tesseractWorker) return tesseractWorker;
     console.log('Screensaver: Initializing Tesseract worker...');
-    tesseractWorker = await Tesseract.createWorker(getOcrLanguage() || 'deu+eng');
+    
+    // Use local traineddata from shared assets
+    const langPath = path.join(__dirname, '..', 'shared', 'assets', 'ocr');
+    tesseractWorker = await Tesseract.createWorker(getOcrLanguage() || 'deu+eng', 1, {
+        langPath: langPath,
+        cacheMethod: 'none' // Don't try to cache in userData, use our local files
+    });
     
     const fastMode = getOcrFastMode();
     const parameters = {

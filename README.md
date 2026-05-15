@@ -9,7 +9,7 @@ This project offers a privacy-focused, local alternative to features similar to 
 *   **Continuous recording**: Automatically captures screenshots of all monitors at configured intervals (60 seconds by default).
 *   **Event-based screenshots**: Triggers screenshots on window changes or focus changes.
 *   **Smart metadata capture**: Stores window titles, open Explorer files, and browser URLs (Chrome/Edge) for each screenshot.
-*   **Screensaver OCR (text recognition)**: Indexes text in screenshots in the background (idle mode or via screensaver) so they become searchable.
+*   **Screensaver OCR (text recognition)**: Indexes text in screenshots in the background (idle mode or via screensaver) so they become searchable. Uses local Tesseract models (EN/DE included) for maximum privacy.
 *   **AI summary**: Uses the OpenAI API (ChatGPT) to generate structured daily reports from captured activity.
 *   **Efficiency**: Detects idle phases, pauses recording during power-save or screensaver operation, and can filter unchanged screen content.
 *   **i18n**: Supports multiple languages (Currently english and german), source code is in english.
