@@ -8,6 +8,7 @@
     "start": "electron ."
   },
   "private": true,
+  "license": "MIT",
   "dependencies": {
     "better-sqlite3": "^12.9.0",
     "electron-store": "^10.0.0",

@@ -63,3 +63,7 @@ The installer (NSIS) bundles both components into a single Windows package.
 ## Credits
 
 This application is a project by **Tim David Saxen**, developed with the friendly support of **[netzmal GmbH](https://www.netzmal.de)**.
+
+## License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.

@@ -17,6 +17,7 @@
     "lint": "eslint . --ext .js"
   },
   "private": true,
+  "license": "MIT",
   "build": {
     "appId": "com.screen.recorder",
     "productName": "Screen Recorder",
