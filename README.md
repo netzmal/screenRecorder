@@ -2,6 +2,8 @@
 
 A modular system for continuously recording screen content on Windows, optimized for documenting work activity and simplifying customer invoice preparation.
 
+This project offers a privacy-focused, local alternative to features similar to Microsoft Recall. Unlike cloud-integrated solutions, Screen Recorder keeps all your data strictly on your own device and gives you full control over when and how AI processing is used.
+
 ## Main Features
 
 *   **Continuous recording**: Automatically captures screenshots of all monitors at configured intervals (60 seconds by default).
@@ -57,3 +59,7 @@ The project consists of four main areas:
 *   **Build installer**: `npm run build:installer`
 
 The installer (NSIS) bundles both components into a single Windows package.
+
+## Credits
+
+This application is a project by **Tim David Saxen**, developed with the friendly support of **[netzmal GmbH](https://www.netzmal.de)**.
