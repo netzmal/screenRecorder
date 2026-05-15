@@ -17,6 +17,27 @@
             justify-content: center; 
             gap: 10px;
         }
+        #tray-restart-btn {
+            border: 1px solid #856404;
+            background: #fff;
+            color: #856404;
+            padding: 4px 10px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            flex-shrink: 0;
+        }
+        #tray-restart-btn:hover {
+            background: #fff8dc;
+        }
+        #tray-restart-btn:disabled {
+            cursor: wait;
+            opacity: 0.7;
+        }
+        #tray-restart-status {
+            font-size: 12px;
+            color: #a94442;
+        }
         #header { padding: 10px; background: #eee; border-bottom: 1px solid #ccc; display: flex; align-items: center; flex-shrink: 0; }
         #main-container { display: flex; flex: 1; overflow: hidden; position: relative; }
         #sidebar { width: 210px; height: 100%; border-right: 1px solid #ccc; border-bottom: none; background: #f9f9f9; display: flex; flex-direction: column; padding: 10px; flex-shrink: 0; box-sizing: border-box; overflow: hidden; }
@@ -528,6 +549,8 @@
             <path d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z"/>
         </svg>
         <span id="tray-warning-text">The background service (Tray) does not seem to be running. Screenshots are currently not being recorded.</span>
+        <button id="tray-restart-btn" type="button" onclick="restartTrayService()">Restart Tray</button>
+        <span id="tray-restart-status"></span>
     </div>
     <div id="main-container">
         <div id="sidebar">
@@ -683,6 +706,8 @@
         const timeSlider = document.getElementById('time-slider');
         const currentTimeDisplay = document.getElementById('current-time-display');
         const trayWarning = document.getElementById('tray-warning');
+        const trayRestartBtn = document.getElementById('tray-restart-btn');
+        const trayRestartStatus = document.getElementById('tray-restart-status');
         const fullscreenOverlay = document.getElementById('fullscreen-overlay');
         const fullscreenImg = document.getElementById('fullscreen-img');
         const titlesList = document.getElementById('titles-list');
@@ -700,7 +725,15 @@
         const searchResultsList = document.getElementById('search-results-list');
 
         let currentConfigDir = '';
-        let selectedDate = new Date().toISOString().split('T')[0];
+        function getLocalDateString(date = new Date()) {
+            return [
+                date.getFullYear(),
+                String(date.getMonth() + 1).padStart(2, '0'),
+                String(date.getDate()).padStart(2, '0')
+            ].join('-');
+        }
+
+        let selectedDate = getLocalDateString();
         let availableDates = new Set();
         let timeGroups = []; // Array von { time: 'HH-mm-ss', files: { displayIndex: fullPath }, date: 'YYYY-MM-DD' }
         let currentTimeIndex = 0;
@@ -867,6 +900,9 @@
             if (document.getElementById('tray-warning-text')) {
                 document.getElementById('tray-warning-text').innerText = translations.viewer.tray_warning;
             }
+            if (trayRestartBtn) {
+                trayRestartBtn.innerText = translations.viewer.tray_restart || 'Restart Tray';
+            }
             
             // Tabs
             if (document.getElementById('tab-screenshots-btn')) document.getElementById('tab-screenshots-btn').innerText = translations.viewer.tabs.screenshot || "Screenshot";
@@ -1015,30 +1051,35 @@
             }
         };
 
-        window.addEventListener('keydown', (e) => {
+        function isEditableKeyboardTarget(target) {
+            if (!target || target === timeSlider) return false;
+            if (target.isContentEditable) return true;
+
+            const tagName = target.tagName;
+            return tagName === 'TEXTAREA' || tagName === 'SELECT' || tagName === 'INPUT';
+        }
+
+        function moveTimelineByOffset(offset) {
             if (timeGroups.length === 0) return;
-            if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
 
+            const newIndex = Math.max(0, Math.min(timeGroups.length - 1, currentTimeIndex + offset));
+            if (newIndex === currentTimeIndex) return;
+
+            currentTimeIndex = newIndex;
+            updateSlider();
+            displayCurrentTimeGroup();
+        }
+
+        window.addEventListener('keydown', (e) => {
             if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+                if (isEditableKeyboardTarget(e.target)) return;
                 e.preventDefault();
-                let step = (e.ctrlKey || e.shiftKey) ? 10 : 1;
-                let newIndex = currentTimeIndex;
-
-                if (e.key === 'ArrowLeft') {
-                    newIndex = Math.max(0, currentTimeIndex - step);
-                } else {
-                    newIndex = Math.min(timeGroups.length - 1, currentTimeIndex + step);
-                }
-
-                if (newIndex !== currentTimeIndex) {
-                    currentTimeIndex = newIndex;
-                    updateSlider();
-                    displayCurrentTimeGroup();
-                }
+                const step = (e.ctrlKey || e.shiftKey) ? 10 : 1;
+                moveTimelineByOffset(e.key === 'ArrowLeft' ? -step : step);
             } else if (e.key === 'Escape') {
                 closeFullscreen();
             }
-        });
+        }, true);
 
         function findNearestTimeIndex(targetTimeStr) {
             if (timeGroups.length === 0) return null;
@@ -1071,10 +1112,105 @@
             return formattedTime ? `${formattedDate} ${formattedTime}` : formattedDate;
         }
 
+        function escapeHtml(value) {
+            return String(value || '').replace(/[<>&'"]/g, (character) => {
+                switch (character) {
+                    case '<': return '&lt;';
+                    case '>': return '&gt;';
+                    case '&': return '&amp;';
+                    case "'": return '&#39;';
+                    case '"': return '&quot;';
+                    default: return character;
+                }
+            });
+        }
+
+        function clearElement(element) {
+            element.replaceChildren();
+        }
+
+        function setTextMessage(container, text, options = {}) {
+            clearElement(container);
+            const message = document.createElement('p');
+            message.textContent = text || '';
+            if (options.color) message.style.color = options.color;
+            if (options.padding) message.style.padding = options.padding;
+            container.appendChild(message);
+        }
+
+        // Clears all timeline-dependent UI when the selected day has no screenshots.
+        function resetTimelineForEmptyDay(message) {
+            timeGroups = [];
+            currentTimeIndex = 0;
+            pendingTargetTime = null;
+            content.classList.remove('single-display');
+            content.style.setProperty('--display-count', 1);
+            setTextMessage(content, message);
+            clearElement(titlesList);
+            clearElement(filesList);
+            clearElement(urlsList);
+            clearElement(callsList);
+            ocrTextDisplay.innerText = '';
+            uiTextDisplay.innerText = '';
+            updateSlider();
+            updateHeatmap();
+        }
+
+        function appendTextRow(tableBody, text, options = {}) {
+            const row = document.createElement('tr');
+            const cell = document.createElement('td');
+            cell.textContent = text || '';
+            if (options.colSpan) cell.colSpan = options.colSpan;
+            if (options.color) cell.style.color = options.color;
+            if (options.italic) cell.style.fontStyle = 'italic';
+            row.appendChild(cell);
+            tableBody.appendChild(row);
+            return row;
+        }
+
+        function appendTwoCellRow(tableBody, firstText, secondText, secondCellOptions = {}) {
+            const row = document.createElement('tr');
+            const firstCell = document.createElement('td');
+            const secondCell = document.createElement('td');
+
+            firstCell.textContent = firstText || '';
+            firstCell.style.color = '#666';
+            secondCell.textContent = secondText || '';
+
+            if (secondCellOptions.color) secondCell.style.color = secondCellOptions.color;
+            if (secondCellOptions.cursor) secondCell.style.cursor = secondCellOptions.cursor;
+            if (secondCellOptions.textDecoration) secondCell.style.textDecoration = secondCellOptions.textDecoration;
+            if (secondCellOptions.onclick) secondCell.onclick = secondCellOptions.onclick;
+
+            row.appendChild(firstCell);
+            row.appendChild(secondCell);
+            tableBody.appendChild(row);
+            return row;
+        }
+
+        function isSafeExternalUrl(value) {
+            try {
+                const url = new URL(value);
+                return url.protocol === 'http:' || url.protocol === 'https:';
+            } catch (err) {
+                return false;
+            }
+        }
+
         function updateSlider() {
+            if (timeGroups.length === 0) {
+                timeSlider.max = 0;
+                timeSlider.value = 0;
+                currentTimeDisplay.innerText = "00:00:00";
+                if (isSearching) {
+                    updateSearchResultsActiveItem();
+                }
+                return;
+            }
+
             if (currentScaleMode === 'heat' && !isSearching) {
                 timeSlider.max = 86399; // 24 * 60 * 60 - 1
-                if (timeGroups.length > 0 && currentTimeIndex < timeGroups.length) {
+                if (currentTimeIndex < timeGroups.length) {
                     timeSlider.value = timeToSeconds(timeGroups[currentTimeIndex].time.replace(/:/g, '-'));
                 }
             } else {
@@ -1082,9 +1218,7 @@
                 timeSlider.value = currentTimeIndex;
             }
             
-            if (timeGroups.length === 0) {
-                currentTimeDisplay.innerText = "00:00:00";
-            } else if (currentScaleMode === 'heat' && !isSearching) {
+            if (currentScaleMode === 'heat' && !isSearching) {
                 const totalSeconds = parseInt(timeSlider.value);
                 const h = Math.floor(totalSeconds / 3600);
                 const m = Math.floor((totalSeconds % 3600) / 60);
@@ -1102,6 +1236,8 @@
 
         function updateHeatmap() {
             const overlay = document.getElementById('heatmap-overlay');
+            if (!overlay) return;
+
             if (currentScaleMode !== 'heat' || isSearching || timeGroups.length === 0) {
                 overlay.style.background = 'transparent';
                 return;
@@ -1241,7 +1377,7 @@
 
 
         function renderSearchResultsList() {
-            searchResultsList.innerHTML = '';
+            clearElement(searchResultsList);
             searchResults.forEach((res, index) => {
                 const item = document.createElement('div');
                 item.className = 'search-result-item';
@@ -1317,7 +1453,10 @@
                 }
             } catch (e) { 
                 console.error('Error in scanAvailableDates:', e);
-                datePicker.innerHTML = `<p style="padding:10px;color:red;">${translations.viewer.calendar.error.replace('{error}', e.message)}</p>`;
+                setTextMessage(datePicker, translations.viewer.calendar.error.replace('{error}', e.message), {
+                    color: 'red',
+                    padding: '10px'
+                });
             }
             console.log('--- Calendar Scan End ---');
         }
@@ -1329,7 +1468,7 @@
                 loadingIndicator.style.display = 'none';
             }
             
-            datePicker.innerHTML = '';
+            clearElement(datePicker);
             
             const now = new Date();
             let startYear = now.getFullYear();
@@ -1452,7 +1591,7 @@
         setInterval(async () => {
             if (currentConfigDir && !isSearching) {
                 const now = Date.now();
-                const today = new Date().toISOString().split('T')[0];
+                const today = getLocalDateString();
                 
                 // Scan only when:
                 // 1. The selected day is today (new data is expected).
@@ -1484,7 +1623,7 @@
                 console.error('Failed to load day captures from DB', err);
             }
 
-            const today = new Date().toISOString().split('T')[0];
+            const today = getLocalDateString();
             const groups = {}; // { 'HH-mm-ss': { displayIndex: path } }
             let fileCount = 0;
 
@@ -1521,21 +1660,27 @@
                 }
             });
 
-            if (fileCount === 0 && captures.length === 0) {
-                content.innerHTML = `<p>${translations.viewer.no_captures}</p>`;
-                timeSlider.max = 0;
-                timeSlider.value = 0;
-                currentTimeDisplay.innerText = "00:00:00";
-                lastRefreshKey = "";
-                return;
-            }
-            
             // Performance: update UI only when the file count or path changed.
             const currentRefreshKey = `${selectedDate}-${fileCount}`;
             if (currentRefreshKey === lastRefreshKey) {
                 return;
             }
             lastRefreshKey = currentRefreshKey;
+
+            if (fileCount === 0 && captures.length === 0) {
+                const msg = (translations.viewer && translations.viewer.no_captures) ? translations.viewer.no_captures : 'Keine Bilder in den Display-Ordnern gefunden.';
+                resetTimelineForEmptyDay(msg);
+                
+                if (document.getElementById('tab-summary').classList.contains('active')) {
+                    void updateSummary();
+                }
+                return;
+            }
+            
+            // Refresh AI summary if the tab is active
+            if (document.getElementById('tab-summary').classList.contains('active')) {
+                void updateSummary();
+            }
 
             const sortedTimes = Object.keys(groups).sort();
             
@@ -1568,7 +1713,7 @@
                 await displayCurrentTimeGroup();
             } else {
                 const msg = (translations.viewer && translations.viewer.no_captures) ? translations.viewer.no_captures : 'Keine Bilder in den Display-Ordnern gefunden.';
-                content.innerHTML = `<p>${msg}</p>`;
+                setTextMessage(content, msg);
                 updateSlider();
                 updateHeatmap();
             }
@@ -1599,7 +1744,7 @@
                 content.style.setProperty('--display-count', displayCount);
                 content.classList.toggle('single-display', displayCount === 1);
                 
-                content.innerHTML = '';
+                clearElement(content);
                 Object.keys(group.files).sort().forEach(displayIndex => {
                     const fullPath = group.files[displayIndex];
                     
@@ -1668,23 +1813,27 @@
             } else {
                 if (currentScaleMode === 'heat' && !isSearching) {
                     const msg = (translations.viewer && translations.viewer.meta) ? translations.viewer.meta.no_screenshot_at_time : 'Kein Screenshot für diese Zeit vorhanden.';
-                    content.innerHTML = `<p style="color: #666; padding: 20px;">${msg}</p>`;
+                    setTextMessage(content, msg, { color: '#666', padding: '20px' });
                 }
                 // Clear metadata lists.
-                titlesList.innerHTML = '';
-                filesList.innerHTML = '';
-                urlsList.innerHTML = '';
-                callsList.innerHTML = '';
+                clearElement(titlesList);
+                clearElement(filesList);
+                clearElement(urlsList);
+                clearElement(callsList);
                 ocrTextDisplay.innerText = '';
                 uiTextDisplay.innerText = '';
                 return;
             }
             
             // Show loading status for metadata.
-            titlesList.innerHTML = `<tr><td style="color: #888; font-style: italic;">${translations.viewer.meta.loading_meta}</td></tr>`;
-            filesList.innerHTML = `<tr><td style="color: #888; font-style: italic;">${translations.viewer.meta.loading_data}</td></tr>`;
-            urlsList.innerHTML = `<tr><td colspan="2" style="color: #888; font-style: italic;">${translations.viewer.meta.loading_urls}</td></tr>`;
-            callsList.innerHTML = `<tr><td colspan="2" style="color: #888; font-style: italic;">${translations.viewer.meta.loading_meta}</td></tr>`;
+            clearElement(titlesList);
+            clearElement(filesList);
+            clearElement(urlsList);
+            clearElement(callsList);
+            appendTextRow(titlesList, translations.viewer.meta.loading_meta, { color: '#888', italic: true });
+            appendTextRow(filesList, translations.viewer.meta.loading_data, { color: '#888', italic: true });
+            appendTextRow(urlsList, translations.viewer.meta.loading_urls, { colSpan: 2, color: '#888', italic: true });
+            appendTextRow(callsList, translations.viewer.meta.loading_meta, { colSpan: 2, color: '#888', italic: true });
             ocrTextDisplay.innerText = translations.viewer.meta.loading_ocr;
             uiTextDisplay.innerText = translations.viewer.meta.loading_ocr; // Use same loading text
 
@@ -1717,10 +1866,10 @@
                 const meta = metaData ? (metaData.meta || metaData) : null;
                 
                 // Remove loading indicators before filling content.
-                titlesList.innerHTML = '';
-                filesList.innerHTML = '';
-                urlsList.innerHTML = '';
-                callsList.innerHTML = '';
+                clearElement(titlesList);
+                clearElement(filesList);
+                clearElement(urlsList);
+                clearElement(callsList);
                 ocrTextDisplay.innerText = translations.viewer.meta.no_ocr;
                 uiTextDisplay.innerText = translations.viewer.meta.no_ui_text;
 
@@ -1737,86 +1886,68 @@
                     if (meta.titles) {
                         const titles = Array.isArray(meta.titles) ? meta.titles : (typeof meta.titles === 'string' ? meta.titles.split(' | ') : []);
                         if (titles.length === 0) {
-                            const tr = document.createElement('tr');
-                            tr.innerHTML = `<td style="color: #888; font-style: italic;">${translations.viewer.meta.no_titles}</td>`;
-                            titlesList.appendChild(tr);
+                            appendTextRow(titlesList, translations.viewer.meta.no_titles, { color: '#888', italic: true });
                         }
                         titles.forEach(t => {
-                            const tr = document.createElement('tr');
+                            const tr = appendTextRow(titlesList, t);
                             if (activeWindow && t === activeWindow) {
                                 tr.className = 'active-window-row';
                             }
-                            tr.innerHTML = `<td>${t}</td>`;
-                            titlesList.appendChild(tr);
                         });
                     } else {
-                        const tr = document.createElement('tr');
-                        tr.innerHTML = `<td style="color: #888; font-style: italic;">${translations.viewer.meta.no_titles_list}</td>`;
-                        titlesList.appendChild(tr);
+                        appendTextRow(titlesList, translations.viewer.meta.no_titles_list, { color: '#888', italic: true });
                     }
                     
                     const openFiles = Array.isArray(meta.openFiles) ? meta.openFiles : (typeof meta.openFiles === 'string' ? meta.openFiles.split(' | ') : []);
                     if (openFiles.length > 0) {
                         openFiles.forEach(f => {
-                            const tr = document.createElement('tr');
-                            tr.innerHTML = `<td>${f}</td>`;
-                            filesList.appendChild(tr);
+                            appendTextRow(filesList, f);
                         });
                     } else {
-                        const tr = document.createElement('tr');
-                        tr.innerHTML = `<td style="color: #888; font-style: italic;">${translations.viewer.meta.no_files}</td>`;
-                        filesList.appendChild(tr);
+                        appendTextRow(filesList, translations.viewer.meta.no_files, { color: '#888', italic: true });
                     }
 
                     // Show URLs.
                     const urls = Array.isArray(meta.urls) ? meta.urls : (typeof meta.urls === 'string' ? meta.urls.split(' | ') : []);
                     if (urls.length > 0) {
                         urls.forEach(u => {
-                            // Show in the new URL table.
-                            const trUrl = document.createElement('tr');
-                            trUrl.innerHTML = `
-                                <td style="color: #666;">${group.time.replace(/-/g, ':')}</td>
-                                <td style="color: #0078d4; cursor: pointer; text-decoration: underline;" onclick="shell.openExternal('${u}')">${u}</td>
-                            `;
-                            urlsList.appendChild(trUrl);
+                            const secondCellOptions = { color: '#0078d4' };
+                            if (isSafeExternalUrl(u)) {
+                                secondCellOptions.cursor = 'pointer';
+                                secondCellOptions.textDecoration = 'underline';
+                                secondCellOptions.onclick = () => shell.openExternal(u);
+                            }
+                            appendTwoCellRow(urlsList, group.time.replace(/-/g, ':'), u, secondCellOptions);
                         });
                     } else {
-                        const tr = document.createElement('tr');
-                        tr.innerHTML = `<td colspan="2" style="color: #888; font-style: italic;">${translations.viewer.meta.no_urls}</td>`;
-                        urlsList.appendChild(tr);
+                        appendTextRow(urlsList, translations.viewer.meta.no_urls, { colSpan: 2, color: '#888', italic: true });
                     }
 
                     // Show calls.
                     const calls = Array.isArray(meta.calls) ? meta.calls : (typeof meta.calls === 'string' ? meta.calls.split(' | ') : []);
                     if (calls.length > 0) {
                         calls.forEach(c => {
-                            const tr = document.createElement('tr');
-                            tr.innerHTML = `<td style="color: #666;">${group.time.replace(/-/g, ':')}</td><td>${c}</td>`;
-                            callsList.appendChild(tr);
+                            appendTwoCellRow(callsList, group.time.replace(/-/g, ':'), c);
                         });
                     } else {
-                        const tr = document.createElement('tr');
-                        tr.innerHTML = `<td colspan="2" style="color: #888; font-style: italic;">${translations.viewer.meta.no_calls}</td>`;
-                        callsList.appendChild(tr);
+                        appendTextRow(callsList, translations.viewer.meta.no_calls, { colSpan: 2, color: '#888', italic: true });
                     }
                 } else {
                     console.warn('Meta not found in DB for:', effectiveDate, timeKey);
                     // Loading status was already gone; set error message now.
-                    titlesList.innerHTML = '';
-                    const tr = document.createElement('tr');
-                    tr.innerHTML = `<td style="color: #d9534f;">${translations.viewer.meta.not_found}</td>`;
-                    titlesList.appendChild(tr);
+                    clearElement(titlesList);
+                    appendTextRow(titlesList, translations.viewer.meta.not_found, { color: '#d9534f' });
                     
-                    filesList.innerHTML = '';
-                    const tr2 = document.createElement('tr');
-                    tr2.innerHTML = `<td style="color: #888; font-style: italic;">${translations.viewer.meta.no_more_data}</td>`;
-                    filesList.appendChild(tr2);
+                    clearElement(filesList);
+                    appendTextRow(filesList, translations.viewer.meta.no_more_data, { color: '#888', italic: true });
 
-                    urlsList.innerHTML = `<tr><td colspan="2" style="color: #888; font-style: italic;">${translations.viewer.meta.no_more_data}</td></tr>`;
+                    clearElement(urlsList);
+                    appendTextRow(urlsList, translations.viewer.meta.no_more_data, { colSpan: 2, color: '#888', italic: true });
                 }
             } catch (e) { 
                 console.error('Error loading meta from DB', e); 
-                titlesList.innerHTML = `<tr><td style="color: #d9534f;">${translations.common.error}: ${e.message}</td></tr>`;
+                clearElement(titlesList);
+                appendTextRow(titlesList, `${translations.common.error}: ${e.message}`, { color: '#d9534f' });
                 ocrTextDisplay.innerText = translations.viewer.meta.not_found + ": " + e.message;
                 uiTextDisplay.innerText = translations.viewer.meta.not_found + ": " + e.message;
             }
@@ -1935,8 +2066,19 @@
         async function updateSummary() {
             summaryDisplay.value = translations.common.loading;
             try {
-                const summary = await ipcRenderer.invoke('get-day-summary', selectedDate);
-                summaryDisplay.value = summary;
+                // First, check if a saved summary already exists.
+                const savedSummary = await ipcRenderer.invoke('get-saved-daily-summary', selectedDate);
+                if (savedSummary) {
+                    aiResultDisplay.value = savedSummary;
+                    renderMarkdown(savedSummary);
+                    switchInnerTab('result');
+                } else {
+                    switchInnerTab('prompt');
+                }
+
+                // Always load the prompt in the background so it's ready if the user wants to regenerate.
+                const summaryPrompt = await ipcRenderer.invoke('get-day-summary', selectedDate);
+                summaryDisplay.value = summaryPrompt;
             } catch (err) {
                 summaryDisplay.value = translations.common.error + ": " + err.message;
             }
@@ -1973,6 +2115,9 @@
                 const result = await ipcRenderer.invoke('generate-ai-summary', promptText);
                 aiResultDisplay.value = result;
                 
+                // Save the result for later reuse.
+                await ipcRenderer.invoke('save-daily-summary', { date: selectedDate, summary: result });
+
                 // Render Markdown
                 renderMarkdown(result);
             } catch (err) {
@@ -1986,7 +2131,7 @@
             if (!md) return;
             
             // Simple Markdown parser.
-            let html = md
+            let html = escapeHtml(md)
                 // Headlines
                 .replace(/^### (.*$)/gim, '<h3>$1</h3>')
                 .replace(/^## (.*$)/gim, '<h2>$1</h2>')
@@ -2041,8 +2186,46 @@
             try {
                 const isRunning = await ipcRenderer.invoke('is-tray-running');
                 trayWarning.style.display = isRunning ? 'none' : 'flex';
+                if (isRunning && trayRestartStatus) {
+                    trayRestartStatus.innerText = '';
+                }
             } catch (e) {
                 console.error('checkTrayStatus error:', e);
+            }
+        }
+
+        // Starts the tray service from the warning banner and refreshes the warning state.
+        async function restartTrayService() {
+            const normalLabel = translations.viewer.tray_restart || 'Restart Tray';
+            const loadingLabel = translations.viewer.tray_restarting || 'Starting...';
+            const failedLabel = translations.viewer.tray_restart_failed || 'Could not restart tray service.';
+
+            if (trayRestartBtn) {
+                trayRestartBtn.disabled = true;
+                trayRestartBtn.innerText = loadingLabel;
+            }
+            if (trayRestartStatus) {
+                trayRestartStatus.innerText = '';
+            }
+
+            try {
+                const result = await ipcRenderer.invoke('restart-tray-service');
+                const isRunning = result && result.success ? true : await ipcRenderer.invoke('is-tray-running');
+                trayWarning.style.display = isRunning ? 'none' : 'flex';
+
+                if (!isRunning && trayRestartStatus) {
+                    trayRestartStatus.innerText = result && result.error ? `${failedLabel} ${result.error}` : failedLabel;
+                }
+            } catch (e) {
+                console.error('restartTrayService error:', e);
+                if (trayRestartStatus) {
+                    trayRestartStatus.innerText = `${failedLabel} ${e.message}`;
+                }
+            } finally {
+                if (trayRestartBtn) {
+                    trayRestartBtn.disabled = false;
+                    trayRestartBtn.innerText = normalLabel;
+                }
             }
         }
 

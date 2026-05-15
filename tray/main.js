@@ -1,4 +1,4 @@
-const { app, Menu, Tray, nativeImage, Notification, BrowserWindow, ipcMain } = require('electron');
+const { app, Menu, Tray, nativeImage, BrowserWindow, ipcMain } = require('electron');
 const path = require('path');
 const fs = require('fs');
 
@@ -11,19 +11,22 @@ const screenshot = require('screenshot-desktop');
 const crypto = require('crypto');
 const Tesseract = require('tesseract.js');
 const { spawn } = require('child_process');
-const { getConfigDir, getInterval, getOnlyOnChanges, getOcrEnabled, getOcrLanguage, store, getScreenshotOnWindowChange, getWindowChangeDelay, getScreenshotOnDisplayChange, getDisplayChangeDelay, getSkipOnPowerSave, getOcrFastMode, getIsBatchOcrRunning, setIsBatchOcrRunning, getIsScreensaverRunning, setIsScreensaverRunning, getLanguage, getScreenshotFormat, setLastIndexingTime } = require('../shared/config');
+const { getConfigDir, getInterval, getOnlyOnChanges, getOcrEnabled, getOcrLanguage, store, getScreenshotOnWindowChange, getWindowChangeDelay, getScreenshotOnDisplayChange, getDisplayChangeDelay, getSkipOnPowerSave, getOcrFastMode, getIsBatchOcrRunning, getIsScreensaverRunning, getLanguage, getScreenshotFormat, setLastIndexingTime, setTrayHeartbeat } = require('../shared/config');
 const { saveCapture, saveCapturesBatch, initDb, getAllCaptures, deleteCapture, getPendingOcrCount } = require('../shared/db');
 const i18n = require('../shared/i18n');
 const { runWindowsOcrBatch } = require('../shared/ocr-helper');
 const { createPowerShellService } = require('./powershell-service');
+const { createPauseController } = require('./pause-controller');
+
+const hasTrayInstanceLock = app.requestSingleInstanceLock({ role: 'tray' });
+if (!hasTrayInstanceLock) {
+    console.log('Another tray instance is already running. Exiting duplicate tray process.');
+    app.quit();
+}
 
 // Initialize i18n.
 const configLanguage = getLanguage();
 i18n.init(configLanguage === 'auto' ? null : configLanguage);
-
-// Ensure the batch OCR status is reset.
-setIsBatchOcrRunning(false);
-setIsScreensaverRunning(false);
 
 // Logging function for debugging.
 function logDebug(message) {
@@ -37,10 +40,10 @@ function logDebug(message) {
     console.log(message);
 }
 
-const powershellService = createPowerShellService({
+const powershellService = hasTrayInstanceLock ? createPowerShellService({
     workerScriptPath: path.join(__dirname, 'powershell-worker.ps1'),
     logDebug
-});
+}) : null;
 
 // Set AppUserModelId for notifications on Windows.
 if (process.platform === 'win32') {
@@ -88,7 +91,15 @@ let displayChangeTimeout = null;
 let ocrWorker = null;
 let currentOnNewScreenshots = null;
 let windowMonitorCheckRunning = false;
+let pauseController = null;
+let trayHeartbeatInterval = null;
+let screenshotCaptureRunning = false;
+let screenshotCapturePending = false;
 
+// Updates the shared tray heartbeat so the viewer can detect a running tray process reliably.
+function updateTrayHeartbeat() {
+    setTrayHeartbeat(Date.now());
+}
 
 async function getOcrWorker() {
     if (ocrWorker) return ocrWorker;
@@ -132,6 +143,7 @@ async function terminateOcrWorker() {
 // Checks whether Windows is in a state where captures should be skipped.
 async function isPowerSaving() {
     if (!getSkipOnPowerSave()) return Promise.resolve(false);
+    if (!powershellService) return false;
 
     try {
         return await powershellService.isPowerSaving();
@@ -143,6 +155,8 @@ async function isPowerSaving() {
 
 // Reads the system idle time through the persistent PowerShell worker.
 async function getIdleTime() {
+    if (!powershellService) return 0;
+
     try {
         return await powershellService.getIdleTime();
     } catch (err) {
@@ -198,6 +212,10 @@ function normalizeStringArray(value) {
 
 // Collects and normalizes metadata from the persistent PowerShell worker.
 async function getMetaDataFromWorker(includeFull, includeMonitors) {
+    if (!powershellService) {
+        return { titles: [], files: [], urls: [], calls: [], activeWindow: "", monitors: [], uiText: null };
+    }
+
     try {
         const data = await powershellService.getMetaData(includeFull, includeMonitors);
         const urls = normalizeStringArray(data.urls);
@@ -244,8 +262,111 @@ async function getMetaData(includeFull = true, includeMonitors = true) {
     return cachedMetaData;
 }
 
+// Clears pending automatic screenshot trigger timers.
+function clearScheduledScreenshotTriggers() {
+    if (recordingTimeout) {
+        clearTimeout(recordingTimeout);
+        recordingTimeout = null;
+    }
+    if (windowChangeTimeout) {
+        clearTimeout(windowChangeTimeout);
+        windowChangeTimeout = null;
+    }
+    if (displayChangeTimeout) {
+        clearTimeout(displayChangeTimeout);
+        displayChangeTimeout = null;
+    }
+    screenshotCapturePending = false;
+}
+
+// Creates the pause controller after the tray app has initialized its helpers.
+function setupPauseController() {
+    if (pauseController) return;
+
+    pauseController = createPauseController({
+        iconDir: path.join(__dirname, 'assets'),
+        i18n,
+        logDebug,
+        clearScheduledScreenshotTriggers,
+        updateTrayStatus,
+        refreshTrayMenu,
+        scheduleImmediateScreenshot: () => {
+            nextScreenshotTime = Date.now();
+            scheduleNextScreenshot();
+        }
+    });
+}
+
+// Updates the tray tooltip with the current recording or pause state.
 function updateTrayStatus() {
-    // Future status updates can go here (for example blinking icons during recording).
+    if (!tray) return;
+
+    let tooltip = `${i18n.t('tray.tooltip')} v${app.getVersion()}`;
+
+    if (pauseController && pauseController.isResumeDecisionActive()) {
+        tooltip += `\n${i18n.t('tray.tooltip_resume_pending', {
+            time: pauseController.formatPauseTime(pauseController.getResumeDecisionDeadline())
+        })}`;
+    } else if (pauseController && pauseController.isPauseActive()) {
+        tooltip += `\n${i18n.t('tray.tooltip_paused_until', {
+            time: pauseController.formatPauseTime(pauseController.getPausedUntil())
+        })}`;
+    }
+
+    tray.setToolTip(tooltip);
+}
+
+// Builds the current tray menu based on the screenshot pause state.
+function buildTrayMenuTemplate() {
+    const template = [
+        { label: i18n.t('tray.menu.show_viewer'), click: () => openViewer() },
+        { type: 'separator' }
+    ];
+
+    if (pauseController && pauseController.isResumeDecisionActive()) {
+        template.push(
+            {
+                label: i18n.t('tray.menu.pause_again_30_minutes'),
+                click: () => pauseController && pauseController.pauseScreenshots()
+            },
+            {
+                label: i18n.t('tray.menu.resume_now'),
+                click: () => pauseController && pauseController.resumeScreenshots({ notify: true })
+            }
+        );
+    } else if (pauseController && pauseController.isPauseActive()) {
+        template.push({
+            label: i18n.t('tray.menu.resume_now'),
+            click: () => pauseController && pauseController.resumeScreenshots({ notify: true })
+        });
+    } else {
+        template.push({
+            label: i18n.t('tray.menu.pause_30_minutes'),
+            click: () => pauseController && pauseController.pauseScreenshots()
+        });
+    }
+
+    template.push(
+        { type: 'separator' },
+        { label: i18n.t('tray.menu.debug'), click: () => openDebugWindow() },
+        { label: i18n.t('tray.menu.quit'), click: () => app.quit() }
+    );
+
+    return template;
+}
+
+// Rebuilds the tray context menu after pause state changes.
+function refreshTrayMenu() {
+    if (!tray) return;
+    tray.setContextMenu(Menu.buildFromTemplate(buildTrayMenuTemplate()));
+}
+
+// Returns true when pause state should prevent a newly scheduled capture timer.
+function isCaptureSchedulingPaused() {
+    return Boolean(pauseController && (
+        pauseController.isPauseActive() ||
+        pauseController.isResumeDecisionActive()
+    ));
 }
 
 
@@ -346,13 +467,13 @@ function setupTray() {
         tray = new Tray(icon);
     }
     
-    const contextMenu = Menu.buildFromTemplate([
-        { label: i18n.t('tray.menu.show_viewer'), click: () => openViewer() },
-        { label: i18n.t('tray.menu.debug'), click: () => openDebugWindow() },
-        { label: i18n.t('tray.menu.quit'), click: () => app.quit() }
-    ]);
-    tray.setToolTip(`${i18n.t('tray.tooltip')} v${app.getVersion()}`);
-    tray.setContextMenu(contextMenu);
+    setupPauseController();
+    updateTrayStatus();
+    refreshTrayMenu();
+    updateTrayHeartbeat();
+    if (!trayHeartbeatInterval) {
+        trayHeartbeatInterval = setInterval(updateTrayHeartbeat, 5000);
+    }
 
     // Open viewer on double click
     tray.on('double-click', () => {
@@ -475,65 +596,82 @@ function filterOcrText(text) {
     return filteredLines.join('\n');
 }
 
+// Captures screenshots unless recording is temporarily blocked by user or system state.
 async function takeScreenshots(onNewScreenshots) {
     if (onNewScreenshots) currentOnNewScreenshots = onNewScreenshots;
-    
-    // Check if we should skip screenshots during batch OCR or if screensaver is active
-    const isBatchRunning = getIsBatchOcrRunning();
-    const isScreensaverRunning = getIsScreensaverRunning();
-    
-    if (isScreensaverRunning || isBatchRunning) {
-        if (isScreensaverRunning) {
-            logDebug('Skipping screenshot because screensaver is active.');
-        } else {
-            logDebug('Skipping screenshot because batch OCR in viewer is active.');
+
+    if (screenshotCaptureRunning) {
+        if (!screenshotCapturePending) {
+            logDebug('Screenshot capture is already running. Queued one follow-up capture.');
         }
-        const intervalSeconds = getInterval();
-        nextScreenshotTime = Date.now() + intervalSeconds * 1000;
-        updateTrayStatus();
-        scheduleNextScreenshot();
+        screenshotCapturePending = true;
         return;
     }
 
-    // Clear existing timeout if present (important for manual/event triggers).
-    if (recordingTimeout) clearTimeout(recordingTimeout);
+    screenshotCaptureRunning = true;
+    let shouldScheduleNext = false;
 
-    if (await isPowerSaving()) {
-        console.log('Skipping screenshot because power saving mode is active (ScreenSaver/Monitor Off).');
-        // Still move the time for the next regular screenshot
-        // so we do not immediately end up here again.
-        const intervalSeconds = getInterval();
-        nextScreenshotTime = Date.now() + intervalSeconds * 1000;
-        updateTrayStatus();
-        
-        // Schedule timer for the next attempt.
-        scheduleNextScreenshot();
-        return;
-    }
-
-    const dir = getConfigDir();
-    const onlyOnChanges = getOnlyOnChanges();
-    const intervalSeconds = getInterval();
-    
-    // Set the time for the next screenshot.
-    nextScreenshotTime = Date.now() + intervalSeconds * 1000;
-    updateTrayStatus();
-
-    logDebug(`Taking screenshot. OCR enabled: ${getOcrEnabled()}`);
-
-    const now = new Date();
-    const year = now.getFullYear().toString();
-    const month = (now.getMonth() + 1).toString().padStart(2, '0');
-    const day = now.getDate().toString().padStart(2, '0');
-    const timeStr = now.getHours().toString().padStart(2, '0') + '-' + now.getMinutes().toString().padStart(2, '0');
-    const secondsStr = now.getSeconds().toString().padStart(2, '0');
-    
-    const appSubDir = 'screenRecorder';
-    const baseDir = path.join(dir, appSubDir, year, month, day);
-    
-    const format = getScreenshotFormat();
-    
     try {
+        if (pauseController && pauseController.shouldSkipCapture()) {
+            logDebug('Skipping screenshot because screenshot recording is paused.');
+            updateTrayStatus();
+            return;
+        }
+
+        // Check if we should skip screenshots during batch OCR or if screensaver is active.
+        const isBatchRunning = getIsBatchOcrRunning();
+        const isScreensaverRunning = getIsScreensaverRunning();
+
+        if (isScreensaverRunning || isBatchRunning) {
+            if (isScreensaverRunning) {
+                logDebug('Skipping screenshot because screensaver is active.');
+            } else {
+                logDebug('Skipping screenshot because batch OCR in viewer is active.');
+            }
+            const intervalSeconds = getInterval();
+            nextScreenshotTime = Date.now() + intervalSeconds * 1000;
+            updateTrayStatus();
+            shouldScheduleNext = true;
+            return;
+        }
+
+        // Clear existing timeout if present (important for manual/event triggers).
+        if (recordingTimeout) {
+            clearTimeout(recordingTimeout);
+            recordingTimeout = null;
+        }
+
+        if (await isPowerSaving()) {
+            console.log('Skipping screenshot because power saving mode is active (ScreenSaver/Monitor Off).');
+            // Still move the time for the next regular screenshot
+            // so we do not immediately end up here again.
+            const intervalSeconds = getInterval();
+            nextScreenshotTime = Date.now() + intervalSeconds * 1000;
+            updateTrayStatus();
+            shouldScheduleNext = true;
+            return;
+        }
+
+        const dir = getConfigDir();
+        const onlyOnChanges = getOnlyOnChanges();
+        const intervalSeconds = getInterval();
+        nextScreenshotTime = Date.now() + intervalSeconds * 1000;
+        updateTrayStatus();
+        shouldScheduleNext = true;
+
+        logDebug(`Taking screenshot. OCR enabled: ${getOcrEnabled()}`);
+
+        const now = new Date();
+        const year = now.getFullYear().toString();
+        const month = (now.getMonth() + 1).toString().padStart(2, '0');
+        const day = now.getDate().toString().padStart(2, '0');
+        const timeStr = now.getHours().toString().padStart(2, '0') + '-' + now.getMinutes().toString().padStart(2, '0');
+        const secondsStr = now.getSeconds().toString().padStart(2, '0');
+
+        const appSubDir = 'screenRecorder';
+        const baseDir = path.join(dir, appSubDir, year, month, day);
+
+        const format = getScreenshotFormat();
         const displays = await screenshot.listDisplays();
         const displayBuffers = [];
         const displayHashes = [];
@@ -596,9 +734,25 @@ async function takeScreenshots(onNewScreenshots) {
         }
     } catch (err) {
         console.error('Screenshot failed', err);
+        const intervalSeconds = getInterval();
+        if (!nextScreenshotTime || nextScreenshotTime <= Date.now()) {
+            nextScreenshotTime = Date.now() + intervalSeconds * 1000;
+        }
+        shouldScheduleNext = true;
     } finally {
-        // Schedule the next screenshot regardless of success or failure.
-        scheduleNextScreenshot();
+        screenshotCaptureRunning = false;
+
+        if (screenshotCapturePending) {
+            screenshotCapturePending = false;
+            if (isCaptureSchedulingPaused()) return;
+            nextScreenshotTime = Date.now();
+            scheduleNextScreenshot();
+            return;
+        }
+
+        if (shouldScheduleNext && !isCaptureSchedulingPaused()) {
+            scheduleNextScreenshot();
+        }
     }
 }
 
@@ -614,7 +768,7 @@ function scheduleNextScreenshot() {
 }
 
 function startRecording(onNewScreenshots) {
-    if (recordingTimeout) clearTimeout(recordingTimeout);
+    clearScheduledScreenshotTriggers();
     if (idleCheckInterval) clearInterval(idleCheckInterval);
     if (metaDataInterval) clearInterval(metaDataInterval);
     
@@ -731,10 +885,17 @@ function startRecording(onNewScreenshots) {
 
 // Watch for config changes
 store.onDidAnyChange((newValue, oldValue) => {
+    if (!hasTrayInstanceLock) return;
+
+    const nextConfig = newValue || {};
+    const previousConfig = oldValue || {};
+
     // Restart timer when important parameters changed.
-    if (newValue.interval !== oldValue.interval || 
-        newValue.screenshotOnWindowChange !== oldValue.screenshotOnWindowChange ||
-        newValue.screenshotOnDisplayChange !== oldValue.screenshotOnDisplayChange) {
+    if (nextConfig.interval !== previousConfig.interval ||
+        nextConfig.screenshotOnWindowChange !== previousConfig.screenshotOnWindowChange ||
+        nextConfig.windowChangeDelay !== previousConfig.windowChangeDelay ||
+        nextConfig.screenshotOnDisplayChange !== previousConfig.screenshotOnDisplayChange ||
+        nextConfig.displayChangeDelay !== previousConfig.displayChangeDelay) {
         startRecording();
     }
 });
@@ -841,12 +1002,19 @@ async function runBackgroundIndexing() {
     }
 }
 
-// Run indexing every 60 minutes.
-setInterval(runBackgroundIndexing, 60 * 60 * 1000);
-// Also run once 10 seconds after startup.
-setTimeout(runBackgroundIndexing, 10000);
+if (hasTrayInstanceLock) {
+    // Run indexing every 60 minutes.
+    setInterval(runBackgroundIndexing, 60 * 60 * 1000);
+    // Also run once 10 seconds after startup.
+    setTimeout(runBackgroundIndexing, 10000);
+}
 
 app.whenReady().then(() => {
+    if (!hasTrayInstanceLock) {
+        app.quit();
+        return;
+    }
+
     setupTray();
     startRecording();
 });
@@ -857,5 +1025,10 @@ app.on('window-all-closed', (e) => {
 });
 
 app.on('before-quit', () => {
-    powershellService.stop();
+    if (!hasTrayInstanceLock) return;
+
+    if (pauseController) pauseController.dispose();
+    if (trayHeartbeatInterval) clearInterval(trayHeartbeatInterval);
+    setTrayHeartbeat(0);
+    if (powershellService) powershellService.stop();
 });

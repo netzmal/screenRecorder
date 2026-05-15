@@ -1,7 +1,7 @@
 {
   "name": "screen-recorder",
   "productName": "Screen Recorder",
-  "version": "1.0.80",
+  "version": "1.0.97",
   "description": "Screen recording with text recognition and screensaver OCR",
   "author": "Tim David Saxen",
   "main": "viewer/main.js",

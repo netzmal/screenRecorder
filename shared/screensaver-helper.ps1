@@ -34,7 +34,8 @@ $policyPath   = "HKCU:\Software\Policies\Microsoft\Windows\Control Panel\Desktop
 # When true, the screensaver values are also set as a user policy.
 # This causes values such as the wait time to be grayed out in the Windows dialog.
 # In exchange, Windows applies the values more reliably.
-$setPolicyValues = $true
+# Default is now false to avoid locking the Windows UI.
+$setPolicyValues = $false
 
 # ------------------------------------------------------------
 # Helper function: safely create a registry key.
@@ -227,35 +228,36 @@ if ($enable) {
             }
         }
 
-        # 2. Fallback: copy the .scr to AppData.
+        # 2. Fallback: use an existing installer-created .scr next to the EXE.
+        #
+        # A copied Electron EXE in AppData is not enough because Electron loads
+        # its resources relative to the launched executable path. The .scr must
+        # therefore live next to the installed resources folder, or Windows must
+        # launch the original EXE path.
         if (-not $done) {
-            Write-Host "Using AppData fallback for .scr file."
-
-            $appDataFolder = Join-Path $env:APPDATA "ScreenRecorder"
-
-            try {
-                if (-not (Test-Path $appDataFolder)) {
-                    New-Item -Path $appDataFolder -ItemType Directory -Force -ErrorAction Stop | Out-Null
-                }
-
-                $appDataScrPath = Join-Path $appDataFolder "ScreenRecorder.scr"
-
-                if (Test-Path $appDataScrPath) {
-                    Remove-Item $appDataScrPath -Force -ErrorAction SilentlyContinue
-                }
-
-                Copy-Item -Path $targetPath -Destination $appDataScrPath -Force -ErrorAction Stop
-                $targetPath = $appDataScrPath
+            if (Test-Path $scrPath) {
+                $targetPath = $scrPath
                 $done = $true
-                Write-Host "Created .scr copy in AppData: $targetPath"
-            } catch {
-                Write-Host "WARNING: Failed to create .scr in AppData: $($_.Exception.Message)" -ForegroundColor Yellow
+                Write-Host "Using existing .scr next to EXE: $targetPath"
             }
         }
 
         if (-not $done) {
-            Write-Host "WARNING: Could not create .scr file. Using original .exe path. Windows might not accept this as screensaver." -ForegroundColor Yellow
+            Write-Host "WARNING: Could not create or find .scr next to EXE. Using original .exe path." -ForegroundColor Yellow
         }
+    }
+
+    # Remove the obsolete AppData fallback created by older builds. It copied
+    # only the Electron EXE without its resources and can fail silently when
+    # Windows starts the screensaver.
+    try {
+        $oldAppDataScrPath = Join-Path $env:APPDATA "ScreenRecorder\ScreenRecorder.scr"
+        if (Test-Path $oldAppDataScrPath) {
+            Remove-Item $oldAppDataScrPath -Force -ErrorAction SilentlyContinue
+            Write-Host "Removed obsolete AppData .scr fallback: $oldAppDataScrPath"
+        }
+    } catch {
+        Write-Host "WARNING: Could not remove obsolete AppData .scr fallback: $($_.Exception.Message)" -ForegroundColor Yellow
     }
 
     $cleanPath = $targetPath.Trim('"')
@@ -265,9 +267,12 @@ if ($enable) {
     # Set normal user values.
     # ------------------------------------------------------------
 
-    # Ensure the path is stored correctly. 
-    # For REG_SZ SCRNSAVE.EXE, quotes are typically NOT needed and can cause issues if double-quoted by the OS.
-    Set-RegString -Path $registryPath -Name "SCRNSAVE.EXE" -Value $cleanPath
+    # Use the path. If it contains spaces, some Windows versions prefer quotes,
+    # others (especially the screensaver dialog) prefer NO quotes.
+    # Registry standard for SCRNSAVE.EXE is usually without quotes.
+    $finalPath = $cleanPath
+    
+    Set-RegString -Path $registryPath -Name "SCRNSAVE.EXE" -Value $finalPath
     Set-RegString -Path $registryPath -Name "ScreenSaveActive" -Value "1"
     Set-RegString -Path $registryPath -Name "ScreenSaveTimeOut" -Value "$timeoutSeconds"
     Set-RegString -Path $registryPath -Name "ScreenSaverIsSecure" -Value $secureValue
@@ -295,9 +300,16 @@ if ($enable) {
             Remove-ItemProperty -Path $policyPath -Name "ScreenSaveTimeOut" -ErrorAction SilentlyContinue
             Remove-ItemProperty -Path $policyPath -Name "ScreenSaverIsSecure" -ErrorAction SilentlyContinue
             Remove-ItemProperty -Path $policyPath -Name "SCRNSAVE.EXE" -ErrorAction SilentlyContinue
+            
+            # If the key is now empty, remove it.
+            $props = Get-ItemProperty -Path $policyPath -ErrorAction SilentlyContinue
+            $propNames = $props.PSObject.Properties.Name | Where-Object { $_ -notmatch "PSPath|PSParentPath|PSChildName|PSDrive|PSProvider" }
+            if ($null -eq $propNames -or $propNames.Count -eq 0) {
+                Remove-Item -Path $policyPath -Force -ErrorAction SilentlyContinue
+            }
         }
 
-        Write-Host "Policy values have been removed. Only normal HKCU desktop values are used."
+        Write-Host "Policy values have been removed (or were not set). Only normal HKCU desktop values are used."
     }
 
     # ------------------------------------------------------------
@@ -322,7 +334,9 @@ public class Win32 {
     # Briefly disable and re-enable so Windows applies the change.
 
     [Win32]::SystemParametersInfo(0x0011, 0, [IntPtr]::Zero, 3) | Out-Null
+    Start-Sleep -Milliseconds 100
     [Win32]::SystemParametersInfo(0x000F, [uint32]$timeoutSeconds, [IntPtr]::Zero, 3) | Out-Null
+    Start-Sleep -Milliseconds 100
     [Win32]::SystemParametersInfo(0x0011, 1, [IntPtr]::Zero, 3) | Out-Null
 
     # ------------------------------------------------------------

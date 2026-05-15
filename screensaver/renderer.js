@@ -9,6 +9,7 @@ i18n.init(lang);
 // Check URL parameters.
 const urlParams = new URLSearchParams(window.location.search);
 const isBlackMode = urlParams.get('black') === '1';
+const isPreviewMode = urlParams.get('preview') === '1';
 
 if (isBlackMode) {
     // Hide everything for black mode.
@@ -25,6 +26,9 @@ if (isBlackMode) {
         document.getElementById('label-pending').innerText = i18n.t('screensaver.todo');
         document.getElementById('label-processed').innerText = i18n.t('screensaver.done');
         document.getElementById('status-text').innerText = i18n.t('screensaver.active');
+        if (isPreviewMode) {
+            document.body.classList.add('preview-mode');
+        }
     });
 }
 
@@ -49,7 +53,7 @@ function updateFooterStatus() {
 }
 
 // OCR status from the main process (primary display only).
-if (!isBlackMode) {
+if (!isBlackMode && !isPreviewMode) {
     const ocrDetailsEl = document.getElementById('ocr-details');
     
     ipcRenderer.on('ocr-status', (event, data) => {
@@ -135,7 +139,18 @@ async function startNextAnimation() {
 // Detect mouse movement.
 let lastMouseX = -1;
 let lastMouseY = -1;
+const startTime = Date.now();
+
 document.addEventListener('mousemove', (e) => {
+    if (isPreviewMode) return;
+    
+    // Ignore mouse movement in the first 2 seconds to avoid jitter-exit.
+    if (Date.now() - startTime < 2000) {
+        lastMouseX = e.screenX;
+        lastMouseY = e.screenY;
+        return;
+    }
+
     if (lastMouseX === -1) {
         lastMouseX = e.screenX;
         lastMouseY = e.screenY;
@@ -143,11 +158,14 @@ document.addEventListener('mousemove', (e) => {
     }
     const deltaX = Math.abs(e.screenX - lastMouseX);
     const deltaY = Math.abs(e.screenY - lastMouseY);
-    if (deltaX > 10 || deltaY > 10) {
+    if (deltaX > 20 || deltaY > 20) {
         ipcRenderer.send('mouse-move');
     }
 });
 document.addEventListener('keydown', () => {
+    if (isPreviewMode) return;
+    // Ignore events in the first 2 seconds to avoid jitter-exit.
+    if (Date.now() - startTime < 2000) return;
     ipcRenderer.send('mouse-move');
 });
 
@@ -277,18 +295,21 @@ async function updateStats() {
         }
         
         const sessionProcessed = Math.max(0, stats.processed - initialProcessedCount);
-        const sessionTotal = initialPendingCount > 0 ? initialPendingCount : stats.total;
+        const sessionTotal = sessionProcessed + stats.pending;
         const processedPercent = sessionTotal > 0 ? (sessionProcessed / sessionTotal) * 100 : 0;
         const pendingPercent = sessionTotal > 0 ? (stats.pending / sessionTotal) * 100 : 0;
         
         const pendingPercentText = formatPercent(pendingPercent);
         const processedPercentText = formatPercent(processedPercent);
 
-        statsPendingEl.innerText = pendingPercentText;
+        if (statsPendingEl) statsPendingEl.innerText = ''; // Hide percent on the left side
         statsProcessedEl.innerText = processedPercentText;
         
         countPendingEl.innerText = `${stats.pending.toLocaleString()} ${i18n.t('screensaver.documents')}`;
-        countProcessedEl.innerText = `${sessionProcessed.toLocaleString()} ${i18n.t('screensaver.documents')}`;
+        countProcessedEl.innerText = i18n.t('screensaver.progress', {
+            current: sessionProcessed.toLocaleString(),
+            total: sessionTotal.toLocaleString()
+        });
         
         // Stack visualization (left: one folder, right: no stack).
         updateStackVisuals(stackPendingEl, stats.pending, true);
@@ -303,16 +324,29 @@ async function updateStats() {
         
         lastProcessedCount = stats.processed;
         lastPendingCount = stats.pending;
+
+        // Check if finished (everything processed and no animations pending).
+        if (stats.pending === 0 && visualQueue === 0 && !isAnimating) {
+            document.body.classList.add('finished');
+        } else {
+            document.body.classList.remove('finished');
+        }
     } catch (e) {
         console.error('Failed to update stats:', e);
     }
 }
 
 // Initial call.
-if (!isBlackMode) {
+if (!isBlackMode && !isPreviewMode) {
     updateFooterStatus();
     setInterval(updateFooterStatus, 1000);
     updateStats();
     // Check stats every 2 seconds.
     setInterval(updateStats, 2000);
+} else if (isPreviewMode) {
+    statsPendingEl.innerText = '0%';
+    statsProcessedEl.innerText = '100%';
+    countPendingEl.innerText = `0 ${i18n.t('screensaver.documents')}`;
+    countProcessedEl.innerText = i18n.t('screensaver.done');
+    updateStackVisuals(stackPendingEl, 1, true);
 }

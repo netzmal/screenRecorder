@@ -39,7 +39,7 @@ Continuous screen recording on Windows with a UI viewer, tray recorder and idle-
     - at the beginning of each source file
     - above every function
     - inside complex code sections
-8. Keep comments practical and useful for a new developer. Avoid obvious comments that only repeat the code.
+8. Keep comments practical and useful for a new developer. Avoid obvious comments that only repeat the code. Note code fixes as comment to avoid future confusion.
 9. Prefer clear, maintainable code over clever shortcuts.
 10. Do not introduce dependencies unless they are clearly needed.
 11. When adding dependencies, update the relevant `package.json` and document why the dependency is needed.

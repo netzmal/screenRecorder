@@ -11,6 +11,7 @@
             overflow: hidden;
             width: 100%;
             height: 100%;
+            cursor: none;
         }
         body {
             color: white;
@@ -200,7 +201,10 @@
             text-shadow: 0 0 24px rgba(126, 243, 221, 0.18), 0 8px 28px rgba(0,0,0,0.9);
             z-index: 100;
         }
-        #left .stats {
+        #left .stats,
+        #count-pending,
+        #label-pending {
+            display: none;
             color: rgba(255, 211, 136, 0.95);
             text-shadow: 0 0 24px rgba(249, 187, 84, 0.2), 0 8px 28px rgba(0,0,0,0.9);
         }
@@ -250,6 +254,39 @@
         }
         #status-text {
             text-shadow: 0 0 14px rgba(126, 243, 221, 0.18);
+        }
+        body.preview-mode {
+            cursor: default;
+        }
+        body.preview-mode .side::before {
+            margin-top: 22px;
+        }
+        body.preview-mode .stats {
+            padding-top: 12px;
+            font-size: 32px;
+        }
+        body.preview-mode .count-info {
+            font-size: 12px;
+        }
+        body.preview-mode .label {
+            font-size: 12px;
+            margin-top: 6px;
+        }
+        body.preview-mode .folder-container {
+            width: 120px;
+            height: 98px;
+        }
+        body.preview-mode #overlay {
+            display: none;
+        }
+        /* Finished state: hide everything except the grid */
+        body.finished .side,
+        body.finished #overlay,
+        body.finished #container::after {
+            opacity: 0 !important;
+            animation: none !important;
+            transition: opacity 3s ease-in-out;
+            pointer-events: none;
         }
         @keyframes gridDrift {
             from { background-position: 0 0, 0 0; }

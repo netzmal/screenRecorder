@@ -10,6 +10,9 @@
     "title": "Screen Recorder Viewer",
     "loading_calendar": "Lade Kalender...",
     "tray_warning": "Der Hintergrunddienst (Tray) scheint nicht zu laufen. Screenshots werden derzeit nicht aufgezeichnet.",
+    "tray_restart": "Tray neu starten",
+    "tray_restarting": "Starte Tray...",
+    "tray_restart_failed": "Tray konnte nicht neu gestartet werden.",
     "no_captures": "Keine Aufnahmen für diesen Tag gefunden.",
     "search_placeholder": "Suche in Titeln oder OCR-Text...",
     "tabs": {
@@ -121,18 +124,28 @@
   },
   "tray": {
     "tooltip": "Screen Recorder",
+    "tooltip_paused_until": "Screenshots pausiert bis {time}",
+    "tooltip_resume_pending": "Fortsetzung um {time}, wenn nicht erneut pausiert wird",
     "menu": {
       "show_viewer": "Viewer öffnen",
       "debug": "Debug",
       "settings": "Einstellungen",
       "quit": "Beenden",
       "pause": "Aufnahme pausieren",
-      "resume": "Aufnahme fortsetzen"
+      "resume": "Aufnahme fortsetzen",
+      "pause_30_minutes": "Screenshots 30 Minuten pausieren",
+      "pause_again_30_minutes": "Noch einmal 30 Minuten pausieren",
+      "resume_now": "Screenshots jetzt fortsetzen"
     },
     "notifications": {
       "started": "Aufnahme gestartet",
       "paused": "Aufnahme pausiert",
-      "resumed": "Aufnahme fortgesetzt"
+      "resumed": "Aufnahme fortgesetzt",
+      "pause_until": "Es werden bis {time} keine Screenshots erstellt.",
+      "resume_prompt_title": "Screenshot-Pause ist abgelaufen",
+      "resume_prompt_body": "In {minutes} Minuten werden wieder Screenshots erstellt. Wähle eine weitere Pause, wenn die Aufnahme pausiert bleiben soll.",
+      "pause_again_action": "Weitere 30 Minuten pausieren",
+      "resume_body": "Screenshots werden wieder erstellt."
     }
   },
   "config": {
@@ -189,6 +202,14 @@
     "ai": {
       "title": "KI Einstellungen",
       "api_key": "ChatGPT API Key (OpenAI):",
+      "model": "Modell:",
+      "fetch_models": "Modelle abrufen",
+      "models_loading": "Modelle werden abgerufen...",
+      "models_loaded": "Modelle wurden geladen.",
+      "models_failed": "Modelle konnten nicht geladen werden.",
+      "no_models": "Keine kompatiblen Textmodelle gefunden.",
+      "max_prompt_tokens": "Maximale Prompt-Tokens:",
+      "max_prompt_tokens_help": "Begrenzt die Menge an Tagesdaten, die an die KI gesendet wird. Standard: 60000. Maximal: 120000.",
       "help": "Wird benötigt, um automatische Zusammenfassungen im Viewer zu generieren."
     },
     "system": {
@@ -209,6 +230,7 @@
     "todo": "Offen",
     "done": "Erledigt",
     "documents": "Bilder",
+    "progress": "{current} von {total}",
     "active": "Bildschirmschoner aktiv",
     "ocr_status": "{engine}: {processed} / {total} Bilder",
     "ocr_status_with_file": "{engine}: {processed} / {total} Bilder - {file}",

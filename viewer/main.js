@@ -18,14 +18,8 @@ if (app) {
 
 // --- Single Instance Lock & Argument Handling ---
 // This must happen as early as possible, before loading the config modules.
-const isScreensaverPreview = process.argv.find(arg => arg.toLowerCase().startsWith('/p'));
-const isScreensaverStartArg = process.argv.includes('screensaver') || process.argv.find(arg => arg.toLowerCase().startsWith('/s'));
-
-if (isScreensaverPreview) {
-    app.quit();
-    process.exit(0);
-    return;
-}
+const isScreensaverPreviewArg = process.argv.find(arg => arg.toLowerCase().startsWith('/p'));
+const isScreensaverStartArg = process.argv.includes('screensaver') || process.argv.find(arg => arg.toLowerCase().startsWith('/s')) || isScreensaverPreviewArg;
     
 if (isScreensaverStartArg) {
     // global.realUserData points to the same
@@ -43,8 +37,8 @@ if (isScreensaverStartArg) {
 const fs = require('fs');
 const os = require('os');
 const Tesseract = require('tesseract.js');
-const { migrateConfig, setConfigDir, getConfigDir, setIntervalTime, getInterval, setOnlyOnChanges, getOnlyOnChanges, setScaleMode, getScaleMode, getDefaultMode, setDefaultMode, getStartView, setStartView, setOcrEnabled, getOcrEnabled, setOcrLanguage, getOcrLanguage, setScreenshotOnWindowChange, getScreenshotOnWindowChange, setWindowChangeDelay, getWindowChangeDelay, setScreenshotOnDisplayChange, getScreenshotOnDisplayChange, setDisplayChangeDelay, getDisplayChangeDelay, setSkipOnPowerSave, getSkipOnPowerSave, getAutostart, setAutostart, getChatGptApiKey, setChatGptApiKey, getIsBatchOcrRunning, setIsBatchOcrRunning, getOcrFastMode, setOcrFastMode, getLanguage, setLanguage, getScreenshotFormat, setScreenshotFormat, getLastIndexingTime, setLastIndexingTime, getScreensaverSystemEnabled, setScreensaverSystemEnabled, getScreensaverTimeout, setScreensaverTimeout, getScreensaverRequirePassword, setScreensaverRequirePassword } = require('../shared/config');
-const { searchCaptures, initDb, saveCapture, saveCapturesBatch, getCaptureByDateTime, getDaySummary, getDayUrls, getDayCalls, getDayCaptures } = require('../shared/db');
+const { migrateConfig, setConfigDir, getConfigDir, setIntervalTime, getInterval, setOnlyOnChanges, getOnlyOnChanges, setScaleMode, getScaleMode, getDefaultMode, setDefaultMode, getStartView, setStartView, setOcrEnabled, getOcrEnabled, setOcrLanguage, getOcrLanguage, setScreenshotOnWindowChange, getScreenshotOnWindowChange, setWindowChangeDelay, getWindowChangeDelay, setScreenshotOnDisplayChange, getScreenshotOnDisplayChange, setDisplayChangeDelay, getDisplayChangeDelay, setSkipOnPowerSave, getSkipOnPowerSave, getAutostart, setAutostart, getChatGptApiKey, setChatGptApiKey, getAiSummaryModel, setAiSummaryModel, getAiSummaryMaxPromptTokens, setAiSummaryMaxPromptTokens, getIsBatchOcrRunning, setIsBatchOcrRunning, getOcrFastMode, setOcrFastMode, getLanguage, setLanguage, getScreenshotFormat, setScreenshotFormat, getLastIndexingTime, setLastIndexingTime, getTrayHeartbeat, getScreensaverSystemEnabled, setScreensaverSystemEnabled, getScreensaverTimeout, setScreensaverTimeout, getScreensaverRequirePassword, setScreensaverRequirePassword } = require('../shared/config');
+const { searchCaptures, initDb, saveCapture, saveCapturesBatch, getCaptureByDateTime, getDaySummary, getDailySummaryResult, saveDailySummary, getDayUrls, getDayCalls, getDayCaptures } = require('../shared/db');
 const i18n = require('../shared/i18n');
 const { runWindowsOcrBatch } = require('../shared/ocr-helper');
 const { exec, spawn } = require('child_process');
@@ -148,8 +142,10 @@ configureWindowsAppIdentity();
 // Run config migration.
 migrateConfig();
 
-// Ensure the batch OCR status is reset.
-setIsBatchOcrRunning(false);
+// Reset stale viewer OCR state only for the interactive viewer process.
+if (!isTrayStartArg && !isScreensaverStartArg) {
+    setIsBatchOcrRunning(false);
+}
 
 // Initialize i18n.
 const configLanguage = getLanguage();
@@ -374,6 +370,9 @@ ipcMain.on('get-config', async (event) => {
                 title: i18n.t('viewer.title'),
                 loading_calendar: i18n.t('viewer.loading_calendar'),
                 tray_warning: i18n.t('viewer.tray_warning'),
+                tray_restart: i18n.t('viewer.tray_restart'),
+                tray_restarting: i18n.t('viewer.tray_restarting'),
+                tray_restart_failed: i18n.t('viewer.tray_restart_failed'),
                 no_captures: i18n.t('viewer.no_captures'),
                 search_placeholder: i18n.t('viewer.search_placeholder'),
                 tabs: {
@@ -517,6 +516,14 @@ ipcMain.on('get-config', async (event) => {
             ai: {
                 title: i18n.t('config.ai.title'),
                 api_key: i18n.t('config.ai.api_key'),
+                model: i18n.t('config.ai.model'),
+                fetch_models: i18n.t('config.ai.fetch_models'),
+                models_loading: i18n.t('config.ai.models_loading'),
+                models_loaded: i18n.t('config.ai.models_loaded'),
+                models_failed: i18n.t('config.ai.models_failed'),
+                no_models: i18n.t('config.ai.no_models'),
+                max_prompt_tokens: i18n.t('config.ai.max_prompt_tokens'),
+                max_prompt_tokens_help: i18n.t('config.ai.max_prompt_tokens_help'),
                 help: i18n.t('config.ai.help')
             },
             system: {
@@ -555,7 +562,10 @@ ipcMain.on('get-config', async (event) => {
         screenshotFormat: getScreenshotFormat(),
         autostart: getAutostart(),
         chatGptApiKey: getChatGptApiKey(),
+        aiSummaryModel: getAiSummaryModel(),
+        aiSummaryMaxPromptTokens: getAiSummaryMaxPromptTokens(),
         language: getLanguage(),
+        displays,
         screensaverSystemEnabled: getScreensaverSystemEnabled(),
         screensaverTimeout: getScreensaverTimeout(),
         screensaverRequirePassword: getScreensaverRequirePassword(),
@@ -564,15 +574,31 @@ ipcMain.on('get-config', async (event) => {
     });
 });
 
-ipcMain.handle('is-tray-running', async () => {
+// Checks whether the tray heartbeat is recent enough to count as active recording service.
+function hasFreshTrayHeartbeat() {
+    const heartbeatAgeMs = Date.now() - getTrayHeartbeat();
+    return heartbeatAgeMs >= 0 && heartbeatAgeMs < 15000;
+}
+
+// Checks whether the tray process is currently active.
+async function isTrayServiceRunning() {
+    if (hasFreshTrayHeartbeat()) return true;
+
     return new Promise((resolve) => {
-        // Search for "Screen Recorder.exe" in the process tree.
-        // Since viewer and tray use the same EXE, look for the "tray" argument,
-        // or rely on the window title (the tray has no window, but tasklist can be used).
-        // Simpler approach: check tasklist for "Screen Recorder.exe" and count instances.
-        // If > 1, the tray is probably running (or a second viewer).
-        // More elegant: PowerShell query for the command line.
-        const cmd = `powershell -NoProfile -Command "Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -like '*tray*' } | Select-Object -ExpandProperty ProcessId"`;
+        // Exclude this short-lived PowerShell process so its own command line cannot create a false positive.
+        const script = [
+            '$ownPid = $PID',
+            'Get-CimInstance Win32_Process | Where-Object {',
+            '  $_.ProcessId -ne $ownPid -and $_.CommandLine -and (',
+            '    $_.CommandLine -match \'(^|\\s|")tray($|\\s|")\' -or',
+            '    $_.CommandLine -match \'[\\\\/]tray([\\\\/]|$)\' -or',
+            '    $_.CommandLine -match \'screen-recorder-tray\'',
+            '  )',
+            '} | Select-Object -First 1 -ExpandProperty ProcessId'
+        ].join('; ');
+        const encodedScript = Buffer.from(script, 'utf16le').toString('base64');
+        const cmd = `powershell -NoProfile -EncodedCommand ${encodedScript}`;
+
         exec(cmd, (err, stdout) => {
             if (err || !stdout.trim()) {
                 resolve(false);
@@ -581,7 +607,92 @@ ipcMain.handle('is-tray-running', async () => {
             }
         });
     });
+}
+
+// Returns the executable and arguments needed to start the tray process.
+function getTrayLaunchCommand() {
+    if (app.isPackaged) {
+        return {
+            command: process.execPath,
+            args: [TRAY_START_ARG],
+            cwd: path.dirname(process.execPath)
+        };
+    }
+
+    return {
+        command: process.execPath,
+        args: [path.join(__dirname, '..'), TRAY_START_ARG],
+        cwd: path.join(__dirname, '..')
+    };
+}
+
+// Starts the tray process in the background.
+function startTrayProcess() {
+    const launchCommand = getTrayLaunchCommand();
+
+    return new Promise((resolve, reject) => {
+        const child = spawn(launchCommand.command, launchCommand.args, {
+            cwd: launchCommand.cwd,
+            detached: true,
+            stdio: 'ignore',
+            windowsHide: true
+        });
+
+        child.once('error', reject);
+        child.once('spawn', () => {
+            child.unref();
+            resolve();
+        });
+    });
+}
+
+// Waits briefly for the tray heartbeat after starting the process.
+async function waitForTrayService(timeoutMs = 8000) {
+    const startedAt = Date.now();
+
+    while (Date.now() - startedAt < timeoutMs) {
+        if (hasFreshTrayHeartbeat()) return true;
+        await new Promise(resolve => setTimeout(resolve, 500));
+    }
+
+    return false;
+}
+
+ipcMain.handle('is-tray-running', async () => {
+    return isTrayServiceRunning();
 });
+
+ipcMain.handle('restart-tray-service', async () => {
+    try {
+        if (hasFreshTrayHeartbeat()) {
+            return { success: true, alreadyRunning: true };
+        }
+
+        await startTrayProcess();
+        const isRunning = await waitForTrayService();
+        return {
+            success: isRunning,
+            started: isRunning,
+            error: isRunning ? null : 'Tray service did not report a heartbeat after startup.'
+        };
+    } catch (err) {
+        console.error('Failed to restart tray service:', err);
+        return { success: false, error: err.message };
+    }
+});
+
+// Escapes text for a single-quoted PowerShell string literal.
+function escapePowerShellString(value) {
+    return String(value).replace(/'/g, "''");
+}
+
+// Runs a small encoded PowerShell script to avoid Windows path quoting issues.
+function runEncodedPowerShell(script, errorMessage) {
+    const encodedScript = Buffer.from(script, 'utf16le').toString('base64');
+    exec(`powershell -NoProfile -ExecutionPolicy Bypass -EncodedCommand ${encodedScript}`, (err) => {
+        if (err) console.error(errorMessage, err);
+    });
+}
 
 ipcMain.on('set-autostart', (event, enabled) => {
     setAutostart(enabled);
@@ -589,39 +700,35 @@ ipcMain.on('set-autostart', (event, enabled) => {
 
     const startupPath = path.join(process.env.APPDATA, 'Microsoft', 'Windows', 'Start Menu', 'Programs', 'Startup', 'Screen Recorder Tray.lnk');
     const commonStartupPath = 'C:\\ProgramData\\Microsoft\\Windows\\Start Menu\\Programs\\Startup\\Screen Recorder Tray.lnk';
-    
-    // Try to manage the LNK in common Startup (may require admin rights when triggered by the user).
-    // If that fails, use the user's Startup folder.
-    
     const exePath = process.execPath;
     const args = 'tray';
     const iconPath = getViewerIconPath();
     const workingDirectory = path.dirname(exePath);
+    const startupPathPs = escapePowerShellString(startupPath);
+    const commonStartupPathPs = escapePowerShellString(commonStartupPath);
+    const cleanupCommands = [
+        `Remove-ItemProperty -Path 'HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Run' -Name 'ScreenRecorderTray' -ErrorAction SilentlyContinue`,
+        `Remove-ItemProperty -Path 'HKLM:\\Software\\Microsoft\\Windows\\CurrentVersion\\Run' -Name 'ScreenRecorderTray' -ErrorAction SilentlyContinue`,
+        `Remove-Item -LiteralPath '${startupPathPs}' -Force -ErrorAction SilentlyContinue`,
+        `Remove-Item -LiteralPath '${commonStartupPathPs}' -Force -ErrorAction SilentlyContinue`
+    ];
     
     if (enabled) {
-        // Use PowerShell to create the LNK because there is no native module for it.
-        // Use EncodedCommand to avoid quoting problems with paths.
         const script = [
+            ...cleanupCommands,
+            `New-Item -ItemType Directory -Path (Split-Path -LiteralPath '${startupPathPs}') -Force | Out-Null`,
             `$WshShell = New-Object -ComObject WScript.Shell`,
-            `$Shortcut = $WshShell.CreateShortcut('${startupPath.replace(/'/g, "''")}')`,
-            `$Shortcut.TargetPath = '${exePath.replace(/'/g, "''")}'`,
+            `$Shortcut = $WshShell.CreateShortcut('${startupPathPs}')`,
+            `$Shortcut.TargetPath = '${escapePowerShellString(exePath)}'`,
             `$Shortcut.Arguments = '${args}'`,
-            `$Shortcut.WorkingDirectory = '${workingDirectory.replace(/'/g, "''")}'`,
-            `$Shortcut.IconLocation = '${iconPath.replace(/'/g, "''")},0'`,
+            `$Shortcut.WorkingDirectory = '${escapePowerShellString(workingDirectory)}'`,
+            `$Shortcut.IconLocation = '${escapePowerShellString(iconPath)},0'`,
             `$Shortcut.Save()`
         ].join('; ');
 
-        const encodedScript = Buffer.from(script, 'utf16le').toString('base64');
-        exec(`powershell -NoProfile -EncodedCommand ${encodedScript}`, (err) => {
-            if (err) console.error('Failed to create autostart link', err);
-        });
+        runEncodedPowerShell(script, 'Failed to create autostart link');
     } else {
-        // Remove link (check both locations for safety).
-        if (fs.existsSync(startupPath)) fs.unlinkSync(startupPath);
-        // Common Startup usually requires admin, but try it anyway.
-        try {
-            if (fs.existsSync(commonStartupPath)) fs.unlinkSync(commonStartupPath);
-        } catch (e) {}
+        runEncodedPowerShell(cleanupCommands.join('; '), 'Failed to remove autostart entries');
     }
 });
 
@@ -634,8 +741,103 @@ ipcMain.handle('get-day-summary', async (event, date) => {
     return getDaySummary(date, i18n.getLocale());
 });
 
+ipcMain.handle('get-saved-daily-summary', async (event, date) => {
+    return getDailySummaryResult(date);
+});
+
+ipcMain.handle('save-daily-summary', async (event, { date, summary }) => {
+    return saveDailySummary(date, summary);
+});
+
 ipcMain.handle('get-day-captures', async (event, date) => {
     return getDayCaptures(date);
+});
+
+// Estimates tokens conservatively enough to avoid OpenAI context overflow without adding a tokenizer dependency.
+function estimatePromptTokens(text) {
+    if (!text) return 0;
+    return Math.ceil(String(text).length / 3);
+}
+
+// Limits the prompt before sending it to the API so very long OCR days still produce a summary.
+function limitPromptToTokenBudget(promptText, maxPromptTokens) {
+    const normalizedLimit = Math.max(1000, Math.min(120000, parseInt(maxPromptTokens, 10) || 60000));
+    const text = String(promptText || '');
+    if (estimatePromptTokens(text) <= normalizedLimit) return text;
+
+    const maxChars = normalizedLimit * 3;
+    const notice = '\n\n[Note: The original day prompt was shortened to fit the configured AI prompt token limit.]\n\n';
+    const availableChars = Math.max(1000, maxChars - notice.length);
+    const headChars = Math.floor(availableChars * 0.65);
+    const tailChars = availableChars - headChars;
+
+    return text.slice(0, headChars).trimEnd() + notice + text.slice(-tailChars).trimStart();
+}
+
+// Requests the model list from OpenAI and keeps only likely text-generation models.
+function fetchOpenAiModels(apiKey) {
+    return new Promise((resolve, reject) => {
+        const request = net.request({
+            method: 'GET',
+            protocol: 'https:',
+            hostname: 'api.openai.com',
+            path: '/v1/models',
+            headers: {
+                'Authorization': `Bearer ${apiKey}`
+            }
+        });
+
+        request.on('response', (response) => {
+            let data = '';
+            response.on('data', (chunk) => {
+                data += chunk;
+            });
+            response.on('end', () => {
+                if (response.statusCode >= 200 && response.statusCode < 300) {
+                    try {
+                        const json = JSON.parse(data);
+                        const models = (json.data || [])
+                            .map(model => model.id)
+                            .filter(isLikelySummaryModel)
+                            .sort((a, b) => a.localeCompare(b));
+                        resolve(models);
+                    } catch (e) {
+                        reject(new Error(i18n.t('viewer.ai.error_parse')));
+                    }
+                } else {
+                    try {
+                        const json = JSON.parse(data);
+                        reject(new Error(i18n.t('viewer.ai.error_api', { message: json.error.message })));
+                    } catch (e) {
+                        reject(new Error(i18n.t('viewer.ai.error_api_status', { status: response.statusCode })));
+                    }
+                }
+            });
+        });
+
+        request.on('error', (error) => {
+            reject(new Error(i18n.t('viewer.ai.error_network', { message: error.message })));
+        });
+
+        request.end();
+    });
+}
+
+// Filters out non-chat model families such as embeddings, moderation, speech, image and realtime models.
+function isLikelySummaryModel(modelId) {
+    const id = String(modelId || '').toLowerCase();
+    if (!id) return false;
+    if (/(embedding|moderation|whisper|tts|transcribe|image|vision|realtime|audio|search|dall-e)/.test(id)) return false;
+    return /^(gpt-|o[0-9]|o[0-9]-|chatgpt-)/.test(id);
+}
+
+ipcMain.handle('fetch-openai-models', async (event, apiKeyOverride) => {
+    const apiKey = apiKeyOverride || getChatGptApiKey();
+    if (!apiKey) {
+        throw new Error(i18n.t('viewer.ai.error_no_key'));
+    }
+
+    return fetchOpenAiModels(apiKey);
 });
 
 ipcMain.handle('generate-ai-summary', async (event, promptText) => {
@@ -643,6 +845,8 @@ ipcMain.handle('generate-ai-summary', async (event, promptText) => {
     if (!apiKey) {
         throw new Error(i18n.t('viewer.ai.error_no_key'));
     }
+
+    const limitedPromptText = limitPromptToTokenBudget(promptText, getAiSummaryMaxPromptTokens());
 
     return new Promise((resolve, reject) => {
         const request = net.request({
@@ -657,7 +861,7 @@ ipcMain.handle('generate-ai-summary', async (event, promptText) => {
         });
 
         const body = JSON.stringify({
-            model: 'gpt-4o-mini',
+            model: getAiSummaryModel(),
             messages: [
                 {
                     role: 'system',
@@ -665,7 +869,7 @@ ipcMain.handle('generate-ai-summary', async (event, promptText) => {
                 },
                 {
                     role: 'user',
-                    content: promptText
+                    content: limitedPromptText
                 }
             ],
             temperature: 0.7
@@ -911,6 +1115,8 @@ ipcMain.on('save-config', (event, data) => {
         if (data.screenshotFormat !== undefined) setScreenshotFormat(data.screenshotFormat);
         if (data.autostart !== undefined) setAutostart(data.autostart);
         if (data.chatGptApiKey !== undefined) setChatGptApiKey(data.chatGptApiKey);
+        if (data.aiSummaryModel !== undefined) setAiSummaryModel(data.aiSummaryModel);
+        if (data.aiSummaryMaxPromptTokens !== undefined) setAiSummaryMaxPromptTokens(data.aiSummaryMaxPromptTokens);
         if (data.language !== undefined) {
             setLanguage(data.language);
             i18n.init(data.language === 'auto' ? null : data.language);
@@ -978,6 +1184,20 @@ ipcMain.on('start-batch-ocr', async (event) => {
     setIsBatchOcrRunning(true);
     const baseDir = path.join(getConfigDir(), 'screenRecorder');
     const lang = getOcrLanguage() || 'deu+eng';
+    let powerSaveBlockerId = null;
+
+    // Stops the blocker when OCR finishes, aborts, or fails.
+    const stopPowerSaveBlocker = () => {
+        if (powerSaveBlockerId === null) return;
+
+        try {
+            powerSaveBlocker.stop(powerSaveBlockerId);
+        } catch (stopErr) {
+            console.error('Failed to stop PowerSaveBlocker:', stopErr);
+        }
+
+        powerSaveBlockerId = null;
+    };
 
     try {
         if (!fs.existsSync(baseDir)) {
@@ -1044,8 +1264,8 @@ ipcMain.on('start-batch-ocr', async (event) => {
         }
 
         // 2. Process tasks.
-        const id = powerSaveBlocker.start('prevent-app-suspension');
-        console.log(`Batch OCR gestartet: ${tasks.length} Aufgaben zu verarbeiten. PowerSaveBlocker ID: ${id}`);
+        powerSaveBlockerId = powerSaveBlocker.start('prevent-app-suspension');
+        console.log(`Batch OCR gestartet: ${tasks.length} Aufgaben zu verarbeiten. PowerSaveBlocker ID: ${powerSaveBlockerId}`);
         
         const isWindows = process.platform === 'win32';
         const useWindowsOcr = isWindows; // Auf Windows bevorzugen wir die native API
@@ -1091,7 +1311,9 @@ ipcMain.on('start-batch-ocr', async (event) => {
                         saveCapture({
                             date: task.dateStr,
                             time: task.timePart,
-                            ocrText: combinedText
+                            timestamp: new Date(`${task.dateStr}T${task.timePart.replace(/-/g, ':')}`).getTime(),
+                            ocrText: combinedText,
+                            files: task.imagePaths
                         });
                     }
                 } catch (batchErr) {
@@ -1160,20 +1382,22 @@ ipcMain.on('start-batch-ocr', async (event) => {
                 saveCapture({
                     date: task.dateStr,
                     time: task.timePart,
-                    ocrText: combinedText
+                    timestamp: new Date(`${task.dateStr}T${task.timePart.replace(/-/g, ':')}`).getTime(),
+                    ocrText: combinedText,
+                    files: task.imagePaths
                 });
             }
             if (scheduler) await scheduler.terminate();
         }
 
         if (abortBatchOcr) {
-            powerSaveBlocker.stop(id);
+            stopPowerSaveBlocker();
             setIsBatchOcrRunning(false);
             event.reply('batch-ocr-progress', { done: true, message: 'Batch OCR wurde vom Benutzer abgebrochen.' });
             return;
         }
 
-        powerSaveBlocker.stop(id);
+        stopPowerSaveBlocker();
         setIsBatchOcrRunning(false);
         console.log(`Batch OCR beendet. ${tasks.length} Zeitpunkte verarbeitet.`);
         event.reply('batch-ocr-progress', { done: true, percent: 100, message: `${tasks.length} Zeitpunkte erfolgreich verarbeitet.` });
@@ -1181,7 +1405,7 @@ ipcMain.on('start-batch-ocr', async (event) => {
     } catch (err) {
         console.error('Batch OCR error', err);
         setIsBatchOcrRunning(false);
-        if (typeof id !== 'undefined') powerSaveBlocker.stop(id);
+        stopPowerSaveBlocker();
         event.reply('batch-ocr-progress', { error: err.message });
     }
 });

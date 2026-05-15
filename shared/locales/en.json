@@ -10,6 +10,9 @@
     "title": "Screen Recorder Viewer",
     "loading_calendar": "Loading calendar...",
     "tray_warning": "The background service (Tray) does not seem to be running. Screenshots are currently not being recorded.",
+    "tray_restart": "Restart Tray",
+    "tray_restarting": "Starting Tray...",
+    "tray_restart_failed": "Tray could not be restarted.",
     "no_captures": "No screenshots found for this day.",
     "search_placeholder": "Search titles or OCR text...",
     "tabs": {
@@ -121,18 +124,28 @@
   },
   "tray": {
     "tooltip": "Screen Recorder",
+    "tooltip_paused_until": "Screenshots paused until {time}",
+    "tooltip_resume_pending": "Resuming at {time} unless paused again",
     "menu": {
       "show_viewer": "Show Viewer",
       "debug": "Debug",
       "settings": "Settings",
       "quit": "Quit",
       "pause": "Pause Recording",
-      "resume": "Resume Recording"
+      "resume": "Resume Recording",
+      "pause_30_minutes": "Pause screenshots for 30 minutes",
+      "pause_again_30_minutes": "Pause another 30 minutes",
+      "resume_now": "Resume screenshots now"
     },
     "notifications": {
       "started": "Recording started",
       "paused": "Recording paused",
-      "resumed": "Recording resumed"
+      "resumed": "Recording resumed",
+      "pause_until": "No screenshots will be created until {time}.",
+      "resume_prompt_title": "Screenshot pause ended",
+      "resume_prompt_body": "Screenshots will resume in {minutes} minutes. Choose another pause if recording should stay paused.",
+      "pause_again_action": "Pause another 30 minutes",
+      "resume_body": "Screenshots are being created again."
     }
   },
   "config": {
@@ -189,6 +202,14 @@
     "ai": {
       "title": "AI Settings",
       "api_key": "ChatGPT API Key (OpenAI):",
+      "model": "Model:",
+      "fetch_models": "Fetch models",
+      "models_loading": "Fetching models...",
+      "models_loaded": "Models loaded.",
+      "models_failed": "Could not load models.",
+      "no_models": "No compatible text models found.",
+      "max_prompt_tokens": "Maximum prompt tokens:",
+      "max_prompt_tokens_help": "Limits how much daily activity data is sent to the AI. Default: 60000. Maximum: 120000.",
       "help": "Required to generate automatic summaries in the viewer."
     },
     "system": {
@@ -209,6 +230,7 @@
     "todo": "Todo",
     "done": "Done",
     "documents": "images",
+    "progress": "{current} of {total}",
     "active": "Screen Recorder Screensaver active",
     "ocr_status": "{engine}: {processed} / {total} images",
     "ocr_status_with_file": "{engine}: {processed} / {total} images - {file}",

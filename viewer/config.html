@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html>
 <head>
     <meta charset="UTF-8">
@@ -164,7 +164,7 @@
             <div id="pane-storage" class="config-pane active">
                 <h2 id="title-storage">Speicherort</h2>
                 <div class="config-group">
-                    <label id="label-screenshot-dir" for="screenshot-dir">Speicherort für Screenshots:</label>
+                    <label id="label-screenshot-dir" for="screenshot-dir">Speicherort fÃ¼r Screenshots:</label>
                     <div style="display: flex; gap: 10px;">
                         <input type="text" id="screenshot-dir" readonly>
                         <button id="browse-btn">Durchsuchen...</button>
@@ -181,27 +181,27 @@
                 <div class="config-group">
                     <div class="checkbox-container">
                         <input type="checkbox" id="only-on-changes">
-                        <label id="label-only-on-changes" for="only-on-changes" style="margin-bottom: 0;">Nur speichern, wenn sich das Bild geändert hat</label>
+                        <label id="label-only-on-changes" for="only-on-changes" style="margin-bottom: 0;">Nur speichern, wenn sich das Bild geÃ¤ndert hat</label>
                     </div>
                 </div>
                 <div class="config-group" style="margin-top: 20px; padding-top: 20px; border-top: 1px solid #eee;">
                     <div class="checkbox-container">
                         <input type="checkbox" id="window-change-screenshot">
-                        <label id="label-window-change" for="window-change-screenshot" style="margin-bottom: 0;">Zusätzlicher Screenshot bei Fensterwechsel</label>
+                        <label id="label-window-change" for="window-change-screenshot" style="margin-bottom: 0;">ZusÃ¤tzlicher Screenshot bei Fensterwechsel</label>
                     </div>
                 </div>
                 <div id="window-change-delay-group" class="config-group" style="margin-left: 30px;">
-                    <label id="label-window-change-delay" for="window-change-delay">Verzögerung nach Fensterwechsel (Sekunden):</label>
+                    <label id="label-window-change-delay" for="window-change-delay">VerzÃ¶gerung nach Fensterwechsel (Sekunden):</label>
                     <input type="number" id="window-change-delay" min="1" max="60">
                 </div>
                 <div class="config-group" style="margin-top: 20px; padding-top: 20px; border-top: 1px solid #eee;">
                     <div class="checkbox-container">
                         <input type="checkbox" id="display-change-screenshot">
-                        <label id="label-display-change" for="display-change-screenshot" style="margin-bottom: 0;">Zusätzlicher Screenshot bei Monitor-Fokuswechsel</label>
+                        <label id="label-display-change" for="display-change-screenshot" style="margin-bottom: 0;">ZusÃ¤tzlicher Screenshot bei Monitor-Fokuswechsel</label>
                     </div>
                 </div>
                 <div id="display-change-delay-group" class="config-group" style="margin-left: 30px;">
-                    <label id="label-display-change-delay" for="display-change-delay">Verzögerung nach Monitorwechsel (Sekunden):</label>
+                    <label id="label-display-change-delay" for="display-change-delay">VerzÃ¶gerung nach Monitorwechsel (Sekunden):</label>
                     <input type="number" id="display-change-delay" min="1" max="60">
                 </div>
                 <div class="config-group" style="margin-top: 20px; padding-top: 20px; border-top: 1px solid #eee;">
@@ -230,18 +230,18 @@
                 <div class="config-group">
                     <label id="label-ocr-language" for="ocr-language">OCR Sprache (z.B. deu, eng, deu+eng):</label>
                     <input type="text" id="ocr-language">
-                    <p id="ocr-language-help" style="font-size: 11px; color: #666; margin-top: 5px;">Mehrere Sprachen können mit '+' getrennt werden (z.B. deu+eng).</p>
+                    <p id="ocr-language-help" style="font-size: 11px; color: #666; margin-top: 5px;">Mehrere Sprachen kÃ¶nnen mit '+' getrennt werden (z.B. deu+eng).</p>
                 </div>
                 <div class="config-group">
                     <div class="checkbox-container">
                         <input type="checkbox" id="ocr-fast-mode">
                         <label id="label-ocr-fast-mode" for="ocr-fast-mode" style="margin-bottom: 0;">Schneller Modus (ungenauer, aber ressourcensparend)</label>
                     </div>
-                    <p id="ocr-fast-mode-help" style="font-size: 11px; color: #666; margin-left: 30px; margin-top: 5px;">Skaliert Bilder vor der Erkennung und deaktiviert Wörterbücher.</p>
+                    <p id="ocr-fast-mode-help" style="font-size: 11px; color: #666; margin-left: 30px; margin-top: 5px;">Skaliert Bilder vor der Erkennung und deaktiviert WÃ¶rterbÃ¼cher.</p>
                 </div>
                 <div class="config-group" style="margin-top: 10px; padding-top: 20px; border-top: 1px solid #eee;">
                     <label id="label-screensaver-title">Windows Bildschirmschoner:</label>
-                    <p id="label-screensaver-help" style="font-size: 12px; color: #666;">Führt die Texterkennung (OCR) automatisch im Hintergrund durch.</p>
+                    <p id="label-screensaver-help" style="font-size: 12px; color: #666;">FÃ¼hrt die Texterkennung (OCR) automatisch im Hintergrund durch.</p>
                     
                     <div style="display: flex; align-items: flex-end; gap: 14px; margin-bottom: 15px; flex-wrap: wrap;">
                         <div id="screensaver-options-container" style="display: flex; flex-direction: column; gap: 10px;">
@@ -274,7 +274,7 @@
 
                 <div class="config-group" style="margin-top: 10px; padding-top: 20px; border-top: 1px solid #eee;">
                     <label id="label-maintenance">Wartung:</label>
-                    <p id="label-maintenance-help" style="font-size: 12px; color: #666;">Analysiere alle vorhandenen Screenshots, für die noch kein OCR-Text extrahiert wurde.</p>
+                    <p id="label-maintenance-help" style="font-size: 12px; color: #666;">Analysiere alle vorhandenen Screenshots, fÃ¼r die noch kein OCR-Text extrahiert wurde.</p>
                     <button id="batch-ocr-btn" class="btn btn-warning">Batch OCR starten</button>
                 </div>
             </div>
@@ -284,7 +284,22 @@
                 <div class="config-group">
                     <label id="label-chatgpt-api-key" for="chatgpt-api-key">ChatGPT API Key (OpenAI):</label>
                     <input type="text" id="chatgpt-api-key" placeholder="sk-...">
-                    <p id="label-chatgpt-help" style="font-size: 11px; color: #666; margin-top: 5px;">Wird benötigt, um automatische Zusammenfassungen im Viewer zu generieren.</p>
+                    <p id="label-chatgpt-help" style="font-size: 11px; color: #666; margin-top: 5px;">Wird benÃ¶tigt, um automatische Zusammenfassungen im Viewer zu generieren.</p>
+                </div>
+                <div class="config-group">
+                    <label id="label-ai-model" for="ai-summary-model">Modell:</label>
+                    <div style="display: flex; gap: 10px; align-items: center;">
+                        <select id="ai-summary-model" style="flex: 1; padding: 8px; border: 1px solid #ccc; border-radius: 4px;">
+                            <option value="gpt-4.1">gpt-4.1</option>
+                        </select>
+                        <button id="fetch-ai-models-btn" class="btn btn-secondary" type="button">Modelle abrufen</button>
+                    </div>
+                    <p id="ai-model-status" style="font-size: 11px; color: #666; margin-top: 5px;"></p>
+                </div>
+                <div class="config-group">
+                    <label id="label-ai-max-prompt-tokens" for="ai-max-prompt-tokens">Maximale Prompt-Tokens:</label>
+                    <input type="number" id="ai-max-prompt-tokens" min="1000" max="120000" step="1000" value="60000">
+                    <p id="label-ai-max-prompt-tokens-help" style="font-size: 11px; color: #666; margin-top: 5px;">Begrenzt die Menge an Tagesdaten, die an die KI gesendet wird.</p>
                 </div>
             </div>
 
@@ -295,7 +310,7 @@
                         <input type="checkbox" id="autostart-enabled">
                         <label id="label-autostart" for="autostart-enabled" style="margin-bottom: 0;">Tray-App automatisch mit Windows starten</label>
                     </div>
-                    <p id="label-autostart-help" style="font-size: 11px; color: #666; margin-left: 30px; margin-top: 5px;">Erstellt oder entfernt eine Verknüpfung im Autostart-Ordner.</p>
+                    <p id="label-autostart-help" style="font-size: 11px; color: #666; margin-left: 30px; margin-top: 5px;">Erstellt oder entfernt eine VerknÃ¼pfung im Autostart-Ordner.</p>
                 </div>
             </div>
 
@@ -322,12 +337,12 @@
                     <label id="label-start-view" for="start-view">Beim Laden eines Tages anzeigen:</label>
                     <select id="start-view" style="width: 80%; padding: 8px; border: 1px solid #ccc; border-radius: 4px;">
                         <option value="latest">Neuester Screenshot</option>
-                        <option value="earliest">Ältester Screenshot</option>
+                        <option value="earliest">Ã„ltester Screenshot</option>
                     </select>
                 </div>
                 <div class="config-group" style="margin-top: 20px; padding-top: 10px; border-top: 1px solid #eee;">
                     <label id="label-test-notifications">Benachrichtigungen testen:</label>
-                    <p id="label-test-notifications-help" style="font-size: 12px; color: #666;">Überprüfen, ob Benachrichtigungen auf diesem System korrekt angezeigt werden.</p>
+                    <p id="label-test-notifications-help" style="font-size: 12px; color: #666;">ÃœberprÃ¼fen, ob Benachrichtigungen auf diesem System korrekt angezeigt werden.</p>
                     <button id="test-notification-btn" class="btn btn-secondary">Test-Benachrichtigung senden</button>
                 </div>
             </div>
@@ -371,6 +386,10 @@
         const skipOnPowerSaveInput = document.getElementById('skip-on-powersave');
         const autostartEnabledInput = document.getElementById('autostart-enabled');
         const chatGptApiKeyInput = document.getElementById('chatgpt-api-key');
+        const aiSummaryModelSelect = document.getElementById('ai-summary-model');
+        const fetchAiModelsBtn = document.getElementById('fetch-ai-models-btn');
+        const aiModelStatus = document.getElementById('ai-model-status');
+        const aiMaxPromptTokensInput = document.getElementById('ai-max-prompt-tokens');
         const defaultModeSelect = document.getElementById('default-mode');
         const startViewSelect = document.getElementById('start-view');
         const browseBtn = document.getElementById('browse-btn');
@@ -416,6 +435,8 @@
             skipOnPowerSaveInput.checked = data.skipOnPowerSave !== undefined ? data.skipOnPowerSave : true;
             autostartEnabledInput.checked = data.autostart !== undefined ? data.autostart : true;
             chatGptApiKeyInput.value = data.chatGptApiKey || '';
+            populateAiModelSelect([data.aiSummaryModel || 'gpt-4.1'], data.aiSummaryModel || 'gpt-4.1');
+            aiMaxPromptTokensInput.value = data.aiSummaryMaxPromptTokens || 60000;
             defaultModeSelect.value = data.defaultMode || 'fit';
             startViewSelect.value = data.startView || 'latest';
             languageSelect.value = data.language || 'auto';
@@ -425,6 +446,7 @@
             updateScreensaverButton();
             updateWindowChangeVisibility();
             updateDisplayChangeVisibility();
+            updateAiModelFetchAvailability();
         });
 
         function applyTranslations() {
@@ -487,6 +509,10 @@
                     document.getElementById('title-ai').innerText = c.ai.title;
                     document.getElementById('label-chatgpt-api-key').innerText = c.ai.api_key;
                     document.getElementById('label-chatgpt-help').innerText = c.ai.help;
+                    document.getElementById('label-ai-model').innerText = c.ai.model;
+                    document.getElementById('fetch-ai-models-btn').innerText = c.ai.fetch_models;
+                    document.getElementById('label-ai-max-prompt-tokens').innerText = c.ai.max_prompt_tokens;
+                    document.getElementById('label-ai-max-prompt-tokens-help').innerText = c.ai.max_prompt_tokens_help;
                 }
 
                 // System Pane
@@ -547,6 +573,48 @@
 
         windowChangeScreenshotInput.onchange = updateWindowChangeVisibility;
         displayChangeScreenshotInput.onchange = updateDisplayChangeVisibility;
+        chatGptApiKeyInput.oninput = updateAiModelFetchAvailability;
+
+        function updateAiModelFetchAvailability() {
+            fetchAiModelsBtn.disabled = !chatGptApiKeyInput.value.trim();
+        }
+
+        function populateAiModelSelect(models, selectedModel) {
+            const uniqueModels = Array.from(new Set([selectedModel || 'gpt-4.1', ...(models || [])].filter(Boolean)));
+            aiSummaryModelSelect.replaceChildren();
+            uniqueModels.forEach(model => {
+                const option = document.createElement('option');
+                option.value = model;
+                option.innerText = model;
+                aiSummaryModelSelect.appendChild(option);
+            });
+            aiSummaryModelSelect.value = selectedModel || uniqueModels[0] || 'gpt-4.1';
+        }
+
+        fetchAiModelsBtn.onclick = async () => {
+            const apiKey = chatGptApiKeyInput.value.trim();
+            const aiTranslations = (translations.config && translations.config.ai) || {};
+            if (!apiKey) {
+                alert(translations.viewer.ai.error_no_key);
+                return;
+            }
+
+            fetchAiModelsBtn.disabled = true;
+            aiModelStatus.innerText = aiTranslations.models_loading || 'Loading models...';
+
+            try {
+                const currentModel = aiSummaryModelSelect.value || 'gpt-4.1';
+                const models = await ipcRenderer.invoke('fetch-openai-models', apiKey);
+                populateAiModelSelect(models, currentModel);
+                aiModelStatus.innerText = models.length > 0
+                    ? (aiTranslations.models_loaded || 'Models loaded.')
+                    : (aiTranslations.no_models || 'No compatible models found.');
+            } catch (err) {
+                aiModelStatus.innerText = `${aiTranslations.models_failed || 'Could not load models.'} ${err.message}`;
+            } finally {
+                updateAiModelFetchAvailability();
+            }
+        };
 
         function switchPane(paneId, sidebarItem) {
             document.querySelectorAll('.config-pane').forEach(p => p.classList.remove('active'));
@@ -619,6 +687,8 @@
                 skipOnPowerSave: skipOnPowerSaveInput.checked,
                 autostart: autostartEnabledInput.checked,
                 chatGptApiKey: chatGptApiKeyInput.value,
+                aiSummaryModel: aiSummaryModelSelect.value,
+                aiSummaryMaxPromptTokens: aiMaxPromptTokensInput.value,
                 defaultMode: defaultModeSelect.value,
                 startView: startViewSelect.value,
                 language: languageSelect.value,
@@ -656,7 +726,11 @@
                         .map(line => line.replace(/.*WARNING: /, '').trim());
                     
                     if (warnings.length > 0) {
-                        warningEl.innerHTML = warnings.join('<br>');
+                        warningEl.replaceChildren();
+                        warnings.forEach((warning, index) => {
+                            if (index > 0) warningEl.appendChild(document.createElement('br'));
+                            warningEl.appendChild(document.createTextNode(warning));
+                        });
                         warningEl.style.display = 'block';
                     } else {
                         warningEl.style.display = 'none';
@@ -712,3 +786,4 @@
     </script>
 </body>
 </html>
+

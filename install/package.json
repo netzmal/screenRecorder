@@ -1,6 +1,6 @@
 {
   "name": "screen-recorder-installer",
-  "version": "1.0.80",
+  "version": "1.0.97",
   "description": "Installer for Screen Recorder",
   "author": "Tim David Saxen",
   "main": "viewer/main.js",
@@ -10,7 +10,7 @@
   },
   "devDependencies": {
     "electron": "^41.2.1",
-    "electron-builder": "^24.13.3"
+    "electron-builder": "^26.8.1"
   },
   "dependencies": {
     "better-sqlite3": "^12.9.0",

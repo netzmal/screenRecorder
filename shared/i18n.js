@@ -5,13 +5,20 @@ const { app } = require('electron');
 let currentLocale = 'en';
 let translations = {};
 
+function normalizeLocale(locale) {
+  if (!locale || locale === 'auto') return null;
+
+  const normalized = String(locale).toLowerCase().split('-')[0];
+  return ['en', 'de'].includes(normalized) ? normalized : null;
+}
+
 /**
  * Initializes i18n.
  * @param {string} forcedLocale - Optional language override.
  */
 function init(forcedLocale = null) {
   // Determine language: forced > app.getLocale() > 'en'.
-  let locale = forcedLocale;
+  let locale = normalizeLocale(forcedLocale);
   
   if (!locale) {
     try {
@@ -34,11 +41,7 @@ function init(forcedLocale = null) {
         systemLocale = appObj.getLocale().split('-')[0];
       }
       
-      if (['en', 'de'].includes(systemLocale)) {
-        locale = systemLocale;
-      } else {
-        locale = 'en';
-      }
+      locale = normalizeLocale(systemLocale) || 'en';
     } catch (e) {
       locale = 'en';
     }

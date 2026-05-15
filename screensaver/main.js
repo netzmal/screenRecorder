@@ -1,6 +1,29 @@
 ﻿const { app, BrowserWindow, screen, ipcMain, powerSaveBlocker } = require('electron');
 const path = require('path');
+// Keep standalone screensaver runs on the same shared config/database path while
+// still using a separate Electron process identity for the screensaver lock.
+if (app) {
+    try {
+        app.name = 'screen-recorder-shared';
+        if (!global.realUserData) {
+            global.realUserData = app.getPath('userData');
+            app.setPath('userData', path.join(global.realUserData, 'screensaver-proc'));
+        }
+    } catch (err) {
+        console.error('Screensaver: Failed to configure shared userData path:', err);
+    }
+}
+
+const hasScreensaverInstanceLock = app.requestSingleInstanceLock({ role: 'screensaver' });
+if (!hasScreensaverInstanceLock) {
+    // We cannot log to our file yet as initOcrLog is not called.
+    // But we can try to log to console.
+    console.log('Another screensaver instance is already running. Exiting duplicate process.');
+    app.quit();
+}
+
 const fs = require('fs');
+const { execFile } = require('child_process');
 const Tesseract = require('tesseract.js');
 const { initDb, getPendingOcrCaptures, updateOcrText, getAllCaptures, getOcrImageStats, getRandomOcrCaptures, resetOcrStatus } = require('../shared/db');
 const { getConfigDir, setIsScreensaverRunning, getOcrLanguage, getOcrFastMode, getOcrEnabled } = require('../shared/config');
@@ -37,9 +60,126 @@ let mainWindows = [];
 let isClosing = false;
 let isOcrRunning = false;
 let ocrTimer = null;
+let ocrRetryTimeout = null;
 let psbDisplayId = null;
 let psbSuspendId = null;
 let tesseractWorker = null;
+let quittingAfterCleanup = false;
+let sessionStartTime = Date.now();
+const previewParentHandle = getScreensaverPreviewParentHandle(process.argv);
+const isPreviewMode = process.argv.some(isScreensaverPreviewSwitch);
+
+// Detects the Windows screensaver preview switch.
+function isScreensaverPreviewSwitch(arg) {
+    if (!arg) return false;
+    const value = String(arg).toLowerCase();
+    return value === '/p' || value.startsWith('/p:');
+}
+
+// Reads the optional parent HWND used by the Windows screensaver settings dialog.
+function getScreensaverPreviewParentHandle(argv) {
+    for (let i = 0; i < argv.length; i++) {
+        const value = String(argv[i] || '').trim();
+        const lower = value.toLowerCase();
+        if (lower.startsWith('/p:')) {
+            return normalizeWindowHandle(value.slice(3));
+        }
+        if (lower === '/p' && argv[i + 1]) {
+            return normalizeWindowHandle(argv[i + 1]);
+        }
+    }
+
+    return null;
+}
+
+// Normalizes a Windows HWND argument into a decimal string.
+function normalizeWindowHandle(value) {
+    if (value === undefined || value === null) return null;
+    const normalized = String(value).trim().replace(/^"|"$/g, '');
+    return /^\d+$/.test(normalized) ? normalized : null;
+}
+
+// Reads Electron's native window handle in the format expected by Win32 calls.
+function getNativeWindowHandle(win) {
+    if (process.platform !== 'win32') return null;
+
+    const handleBuffer = win.getNativeWindowHandle();
+    if (!handleBuffer || handleBuffer.length < 4) return null;
+
+    if (handleBuffer.length >= 8) {
+        return handleBuffer.readBigUInt64LE(0).toString();
+    }
+
+    return handleBuffer.readUInt32LE(0).toString();
+}
+
+// Embeds the preview window into the Windows screensaver settings preview host.
+function attachPreviewWindowToParent(win, parentHandle) {
+    return new Promise((resolve) => {
+        const childHandle = getNativeWindowHandle(win);
+        if (!childHandle || !parentHandle) {
+            resolve(false);
+            return;
+        }
+
+        const script = `
+$ProgressPreference = 'SilentlyContinue'
+$ChildHandle = '${childHandle}'
+$ParentHandle = '${parentHandle}'
+Add-Type @"
+using System;
+using System.Runtime.InteropServices;
+public static class NativeScreensaverPreview {
+    [StructLayout(LayoutKind.Sequential)]
+    public struct RECT { public int Left; public int Top; public int Right; public int Bottom; }
+    [DllImport("user32.dll", SetLastError=true)]
+    public static extern IntPtr SetParent(IntPtr hWndChild, IntPtr hWndNewParent);
+    [DllImport("user32.dll", SetLastError=true)]
+    public static extern bool GetClientRect(IntPtr hWnd, out RECT lpRect);
+    [DllImport("user32.dll", SetLastError=true)]
+    public static extern bool MoveWindow(IntPtr hWnd, int X, int Y, int nWidth, int nHeight, bool bRepaint);
+    [DllImport("user32.dll", EntryPoint="GetWindowLongPtr", SetLastError=true)]
+    public static extern IntPtr GetWindowLongPtr(IntPtr hWnd, int nIndex);
+    [DllImport("user32.dll", EntryPoint="SetWindowLongPtr", SetLastError=true)]
+    public static extern IntPtr SetWindowLongPtr(IntPtr hWnd, int nIndex, IntPtr dwNewLong);
+}
+"@
+$child = [IntPtr]::new([Int64]$ChildHandle)
+$parent = [IntPtr]::new([Int64]$ParentHandle)
+$gwlStyle = -16
+$wsChild = [Int64]0x40000000
+$wsVisible = [Int64]0x10000000
+$wsCaption = [Int64]0x00C00000
+$wsPopup = [Int64]0x80000000
+$style = [NativeScreensaverPreview]::GetWindowLongPtr($child, $gwlStyle).ToInt64()
+$newStyle = (($style -bor $wsChild -bor $wsVisible) -band (-bnot $wsPopup) -band (-bnot $wsCaption))
+[NativeScreensaverPreview]::SetWindowLongPtr($child, $gwlStyle, [IntPtr]::new($newStyle)) | Out-Null
+[NativeScreensaverPreview]::SetParent($child, $parent) | Out-Null
+$rect = New-Object NativeScreensaverPreview+RECT
+[NativeScreensaverPreview]::GetClientRect($parent, [ref]$rect) | Out-Null
+$width = [Math]::Max(1, $rect.Right - $rect.Left)
+$height = [Math]::Max(1, $rect.Bottom - $rect.Top)
+[NativeScreensaverPreview]::MoveWindow($child, 0, 0, $width, $height, $true) | Out-Null
+`;
+
+        const encodedScript = Buffer.from(script, 'utf16le').toString('base64');
+        execFile('powershell.exe', [
+            '-NoProfile',
+            '-ExecutionPolicy',
+            'Bypass',
+            '-EncodedCommand',
+            encodedScript
+        ], (error) => {
+            if (error) {
+                console.error('Screensaver: Failed to attach preview window:', error.message);
+                resolve(false);
+                return;
+            }
+
+            resolve(true);
+        });
+    });
+}
 
 async function getTesseractWorker() {
     if (tesseractWorker) return tesseractWorker;
@@ -75,6 +215,10 @@ async function terminateTesseractWorker() {
 }
 
 function createWindows() {
+    if (isPreviewMode) {
+        return createPreviewWindow();
+    }
+
     const displays = screen.getAllDisplays();
     const primaryDisplay = screen.getPrimaryDisplay();
     const loadPromises = [];
@@ -131,11 +275,19 @@ function createWindows() {
             win.setFullScreen(true);
             win.setAlwaysOnTop(true, 'screen-saver');
             win.show();
+            ocrLog(`[MAIN] Window shown for display ${display.id}`);
         });
         
         // Exit on interaction (keyboard).
         win.webContents.on('before-input-event', (event, input) => {
-            closeScreensaver();
+            if (isPreviewMode) return;
+            // Ignore events in the first 2 seconds to avoid jitter-exit.
+            if (Date.now() - sessionStartTime < 2000) return;
+            
+            if (input.type === 'keyDown') {
+                ocrLog(`[MAIN] Exit triggered by keyboard: ${input.key}`);
+                void closeScreensaver('keyboard');
+            }
         });
 
         mainWindows.push(win);
@@ -144,23 +296,111 @@ function createWindows() {
     return Promise.all(loadPromises);
 }
 
-function closeScreensaver() {
-    if (isClosing) return;
-    isClosing = true;
-    
-    setIsScreensaverRunning(false);
+// Creates the lightweight preview used by the Windows screensaver settings dialog.
+function createPreviewWindow() {
+    const primaryDisplay = screen.getPrimaryDisplay();
+    const fallbackWidth = 480;
+    const fallbackHeight = 270;
+    const x = Math.round(primaryDisplay.bounds.x + (primaryDisplay.bounds.width - fallbackWidth) / 2);
+    const y = Math.round(primaryDisplay.bounds.y + (primaryDisplay.bounds.height - fallbackHeight) / 2);
 
-    terminateTesseractWorker();
+    const win = new BrowserWindow({
+        x,
+        y,
+        width: fallbackWidth,
+        height: fallbackHeight,
+        title: 'Screen Recorder Screensaver Preview',
+        fullscreen: false,
+        frame: false,
+        resizable: false,
+        hasShadow: false,
+        backgroundColor: '#000000',
+        transparent: false,
+        alwaysOnTop: false,
+        skipTaskbar: true,
+        autoHideMenuBar: true,
+        show: false,
+        webPreferences: {
+            nodeIntegration: true,
+            contextIsolation: false
+        }
+    });
+
+    win.loadFile(path.join(__dirname, 'index.html'), {
+        query: { black: '0', preview: '1' }
+    });
+
+    const loadPromise = new Promise(resolve => {
+        win.webContents.once('did-finish-load', resolve);
+        win.webContents.once('did-fail-load', resolve);
+    });
+
+    win.once('ready-to-show', async () => {
+        if (win.isDestroyed()) return;
+
+        if (previewParentHandle && process.platform === 'win32') {
+            const attached = await attachPreviewWindowToParent(win, previewParentHandle);
+            if (win.isDestroyed()) return;
+            if (attached) {
+                win.showInactive();
+                return;
+            }
+        }
+
+        win.show();
+    });
+
+    mainWindows.push(win);
+    return loadPromise;
+}
+
+async function closeScreensaver(reason = 'unknown') {
+    if (!hasScreensaverInstanceLock) return;
+    if (isClosing) return;
+    ocrLog(`[MAIN] closeScreensaver called. Reason: ${reason}`);
+    isClosing = true;
+    quittingAfterCleanup = true;
+    
+    if (!isPreviewMode) {
+        try {
+            setIsScreensaverRunning(false);
+        } catch (err) {
+            console.error('Screensaver: Failed to clear running state:', err);
+        }
+    }
+
+    if (ocrTimer) {
+        clearInterval(ocrTimer);
+        ocrTimer = null;
+    }
+    if (ocrRetryTimeout) {
+        clearTimeout(ocrRetryTimeout);
+        ocrRetryTimeout = null;
+    }
 
     if (psbDisplayId !== null) {
-        powerSaveBlocker.stop(psbDisplayId);
+        try {
+            powerSaveBlocker.stop(psbDisplayId);
+        } catch (err) {
+            console.error('Screensaver: Failed to stop display PowerSaveBlocker:', err);
+        }
         psbDisplayId = null;
     }
     if (psbSuspendId !== null) {
-        powerSaveBlocker.stop(psbSuspendId);
+        try {
+            powerSaveBlocker.stop(psbSuspendId);
+        } catch (err) {
+            console.error('Screensaver: Failed to stop suspend PowerSaveBlocker:', err);
+        }
         psbSuspendId = null;
     }
     console.log('Screensaver: PowerSaveBlockers stopped');
+
+    try {
+        await terminateTesseractWorker();
+    } catch (err) {
+        console.error('Screensaver: Failed to terminate Tesseract worker:', err);
+    }
 
     mainWindows.forEach(win => {
         if (!win.isDestroyed()) win.close();
@@ -234,7 +474,8 @@ async function runOcrBackground() {
             let totalSavedOk = 0;
             let totalSavedEmpty = 0;
 
-            const saveCompletedCaptures = () => {
+            const saveCompletedCaptures = (options = {}) => {
+                const allowErrors = options.allowErrors === true;
                 let savedOk = 0;
                 let savedEmpty = 0;
 
@@ -242,7 +483,11 @@ async function runOcrBackground() {
                     if (savedCaptureIds.has(id)) return;
 
                     const paths = capturePathsById[id];
-                    const allFinished = paths.every(p => ocrResults[p] !== undefined && !isOcrErrorText(ocrResults[p]));
+                    const allFinished = paths.every(p => {
+                        const result = ocrResults[p];
+                        if (result === undefined) return false;
+                        return allowErrors || !isOcrErrorText(result);
+                    });
                     if (!allFinished) return;
 
                     const combinedText = paths.map(p => ocrResults[p] || '').join('\n\n');
@@ -363,7 +608,7 @@ async function runOcrBackground() {
                             } else {
                                 ocrResults[key] = '';
                             }
-                            saveCompletedCaptures();
+                            saveCompletedCaptures({ allowErrors: true });
 
                             const statusLine = `Tesseract OCR: ${imagePaths.length - failedPaths.length + tessProcessed}/${imagePaths.length} Bilder - ${path.basename(p)}`;
                             ocrLog(`[STAT] ${statusLine} (${hasText ? 'OK' : 'leer'})`);
@@ -390,7 +635,7 @@ async function runOcrBackground() {
                             const currentStats = getOcrImageStats();
                             const key = path.normalize(p).toLowerCase();
                             ocrResults[key] = `Error: ${tessErr.message}`;
-                            saveCompletedCaptures();
+                            saveCompletedCaptures({ allowErrors: true });
                             mainWindows.forEach(win => {
                                 if (!win.isDestroyed()) {
                                     win.webContents.send('ocr-status', {
@@ -411,14 +656,24 @@ async function runOcrBackground() {
                     }
                 } catch (err) {
                     ocrLog(`[ERR]  Tesseract-Worker-Init: ${err.message}`);
+                    failedPaths.forEach(p => {
+                        const key = path.normalize(p).toLowerCase();
+                        if (ocrResults[key] === undefined || isOcrErrorText(ocrResults[key])) {
+                            ocrResults[key] = `Error: Tesseract fallback failed: ${err.message}`;
+                        }
+                    });
+                    saveCompletedCaptures({ allowErrors: true });
                 }
             }
 
-            saveCompletedCaptures();
+            saveCompletedCaptures({ allowErrors: true });
 
             const afterStats = getOcrImageStats();
             ocrLog(`[SAVE] ${totalSavedOk} mit Text, ${totalSavedEmpty} leer gespeichert | Erledigt gesamt: ${afterStats.processed} (${afterStats.processedPercent}%)`);
             ocrLog(`[DISP] Oben rechts: ${afterStats.processed - (stats.processed)} neue Bilder | ${afterStats.processedPercent}% erledigt`);
+        } else {
+            ocrLog(`[WARN] ${pending.length} ausstehende Captures ohne Bildpfade als erledigt markiert`);
+            pending.forEach(capture => updateOcrText(capture.id, ''));
         }
 
         mainWindows.forEach(win => {
@@ -428,7 +683,10 @@ async function runOcrBackground() {
         isOcrRunning = false;
         const nextPending = getPendingOcrCaptures(1);
         if (nextPending.length > 0 && !isClosing) {
-            setTimeout(runOcrBackground, 1000);
+            ocrRetryTimeout = setTimeout(() => {
+                ocrRetryTimeout = null;
+                runOcrBackground();
+            }, 1000);
         }
     } catch (err) {
         ocrLog(`[ERR]  runOcrBackground: ${err.message}\n${err.stack}`);
@@ -437,9 +695,23 @@ async function runOcrBackground() {
 }
 
 app.whenReady().then(async () => {
+    initOcrLog();
+    ocrLog('[INFO] app.whenReady() triggered');
+    
+    if (!hasScreensaverInstanceLock) {
+        ocrLog('[WARN] No instance lock in whenReady, quitting.');
+        app.quit();
+        return;
+    }
+
     try {
-        initOcrLog();
-        ocrLog('[INFO] App bereit, initialisiere...');
+        if (isPreviewMode) {
+            ocrLog('[INFO] Starting in PREVIEW mode');
+            await createWindows();
+            return;
+        }
+
+        ocrLog('[INFO] Starting in NORMAL mode');
         setIsScreensaverRunning(true);
 
         try {
@@ -451,7 +723,7 @@ app.whenReady().then(async () => {
 
         // Detect mouse movement (via IPC from the renderer).
         ipcMain.on('mouse-move', () => {
-            closeScreensaver();
+            void closeScreensaver('mouse-move-ipc');
         });
 
         // Provide statistics and images.
@@ -481,13 +753,33 @@ app.whenReady().then(async () => {
         await createWindows();
 
         // Start the OCR loop (one batch every 30 seconds).
-        runOcrBackground();
+        void runOcrBackground();
         ocrTimer = setInterval(runOcrBackground, 30000);
     } catch (err) {
         ocrLog(`[ERR]  Kritischer Startfehler: ${err.message}\n${err.stack}`);
+        void closeScreensaver('critical-start-error');
     }
 });
 
+app.on('render-process-gone', (event, webContents, details) => {
+    ocrLog(`[ERR]  Render process gone: ${details.reason} (${details.exitCode})`);
+    void closeScreensaver('render-process-gone');
+});
+
+app.on('child-process-gone', (event, details) => {
+    ocrLog(`[ERR]  Child process gone: ${details.type} ${details.reason} (${details.exitCode})`);
+});
+
 app.on('window-all-closed', () => {
-    if (process.platform !== 'darwin') app.quit();
+    if (hasScreensaverInstanceLock && process.platform !== 'darwin' && !isClosing) {
+        void closeScreensaver('window-all-closed');
+    }
+});
+
+app.on('before-quit', (event) => {
+    if (!hasScreensaverInstanceLock) return;
+    if (quittingAfterCleanup || isClosing) return;
+
+    event.preventDefault();
+    void closeScreensaver();
 });

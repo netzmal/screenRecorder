@@ -1,4 +1,4 @@
-const { app } = require('electron');
+﻿const { app } = require('electron');
 const path = require('path');
 
 // Set the app name as early as possible so electron-store uses the correct path.
@@ -111,6 +111,11 @@ const setIsBatchOcrRunning = (value) => store.set('isBatchOcrRunning', value);
 const getIsScreensaverRunning = () => store.get('isScreensaverRunning', false);
 const setIsScreensaverRunning = (value) => store.set('isScreensaverRunning', value);
 
+// Reads the last timestamp written by the tray recorder process.
+const getTrayHeartbeat = () => store.get('trayHeartbeat', 0);
+// Stores the current tray recorder heartbeat timestamp.
+const setTrayHeartbeat = (timestamp) => store.set('trayHeartbeat', timestamp);
+
 const getScreensaverSystemEnabled = () => store.get('screensaverSystemEnabled', false);
 const setScreensaverSystemEnabled = (value) => store.set('screensaverSystemEnabled', value);
 
@@ -145,6 +150,19 @@ const setAutostart = (value) => store.set('autostart', value);
 const getChatGptApiKey = () => store.get('chatGptApiKey', '');
 const setChatGptApiKey = (value) => store.set('chatGptApiKey', value);
 
+const getAiSummaryModel = () => store.get('aiSummaryModel', 'gpt-4.1');
+const setAiSummaryModel = (value) => store.set('aiSummaryModel', value || 'gpt-4.1');
+
+// Keeps the AI summary prompt limit inside the usable context window.
+const normalizeAiSummaryMaxPromptTokens = (value) => {
+    const parsed = parseInt(value, 10);
+    if (!Number.isFinite(parsed)) return 60000;
+    return Math.max(1000, Math.min(120000, parsed));
+};
+
+const getAiSummaryMaxPromptTokens = () => normalizeAiSummaryMaxPromptTokens(store.get('aiSummaryMaxPromptTokens', 60000));
+const setAiSummaryMaxPromptTokens = (value) => store.set('aiSummaryMaxPromptTokens', normalizeAiSummaryMaxPromptTokens(value));
+
 const getLanguage = () => store.get('language', 'auto');
 const setLanguage = (value) => store.set('language', value);
 
@@ -158,59 +176,46 @@ const migrateConfig = () => {
         const userDataPath = app.getPath('userData');
         const newConfigFilePath = path.join(userDataPath, 'config.json');
 
-    // If the new config already exists and is not almost empty, skip migration.
-    if (fs.existsSync(newConfigFilePath)) {
-        try {
-            const stats = fs.statSync(newConfigFilePath);
-            if (stats.size > 10) return; // Eine fast leere {} hat 2-3 Bytes
-        } catch (e) {}
-    }
-
-    const migrationSources = [
-        { path: path.join(app.getPath('appData'), 'screen-recorder-viewer', 'screen-recorder-shared-config.json'), label: 'old viewer' },
-        { path: path.join(app.getPath('appData'), 'screen-recorder-tray', 'screen-recorder-shared-config.json'), label: 'old tray' },
-        { path: path.join(app.getPath('appData'), 'Screen Recorder', 'config.json'), label: 'default product' },
-        { path: path.join(app.getPath('appData'), 'screen-recorder', 'config.json'), label: 'default name' }
-    ];
-
-    for (const source of migrationSources) {
-        if (fs.existsSync(source.path)) {
+        // If the new config already exists and is not almost empty, keep it.
+        if (fs.existsSync(newConfigFilePath)) {
             try {
-                if (!fs.existsSync(userDataPath)) fs.mkdirSync(userDataPath, { recursive: true });
-                fs.copyFileSync(source.path, newConfigFilePath);
-                console.log(`Config migration from ${source.label} successful`);
-                // After a successful migration, the old files can be cleaned up.
-                // This is done collectively at the end.
-                break; 
-            } catch (e) {
-                console.error(`Config migration from ${source.label} failed`, e);
-            }
-        }
-    }
-
-    // Cleanup: delete old files.
-    const cleanupPaths = [
-        path.join(app.getPath('appData'), 'screen-recorder-tray', 'config.json'),
-        path.join(app.getPath('appData'), 'screen-recorder-tray', 'screen-recorder-shared-config.json'),
-        path.join(app.getPath('appData'), 'screen-recorder-viewer', 'screen-recorder-shared-config.json'),
-        path.join(app.getPath('appData'), 'Screen Recorder', 'config.json'),
-        path.join(app.getPath('appData'), 'screen-recorder', 'config.json')
-    ];
-
-    cleanupPaths.forEach(p => {
-        if (fs.existsSync(p)) {
-            try {
-                // Delete only when we are sure the data has been migrated.
-                // For the DB, this is checked in initDb().
-                // Here, delete files only when they are "old".
-                // To be safe, delete them only after initDb() has run.
-                // But at this point we can at least delete old config files.
-                if (p.endsWith('.json')) {
-                    fs.unlinkSync(p);
-                }
+                const stats = fs.statSync(newConfigFilePath);
+                if (stats.size > 10) return;
             } catch (e) {}
         }
-    });
+
+        const migrationSources = [
+            { path: path.join(app.getPath('appData'), 'screen-recorder-viewer', 'screen-recorder-shared-config.json'), label: 'old viewer' },
+            { path: path.join(app.getPath('appData'), 'screen-recorder-tray', 'screen-recorder-shared-config.json'), label: 'old tray' },
+            { path: path.join(app.getPath('appData'), 'Screen Recorder', 'config.json'), label: 'default product' },
+            { path: path.join(app.getPath('appData'), 'screen-recorder', 'config.json'), label: 'default name' }
+        ];
+
+        const validSources = migrationSources
+            .filter(source => fs.existsSync(source.path))
+            .map(source => ({ ...source, mtimeMs: fs.statSync(source.path).mtimeMs }))
+            .sort((a, b) => a.mtimeMs - b.mtimeMs);
+
+        const mergedConfig = {};
+        const usedSources = [];
+
+        validSources.forEach(source => {
+            try {
+                const content = JSON.parse(fs.readFileSync(source.path, 'utf8'));
+                if (content && typeof content === 'object' && !Array.isArray(content)) {
+                    Object.assign(mergedConfig, content);
+                    usedSources.push(source.label);
+                }
+            } catch (e) {
+                console.error(`Config migration source ${source.label} could not be read`, e);
+            }
+        });
+
+        if (usedSources.length > 0) {
+            if (!fs.existsSync(userDataPath)) fs.mkdirSync(userDataPath, { recursive: true });
+            fs.writeFileSync(newConfigFilePath, JSON.stringify(mergedConfig, null, '\t'), 'utf8');
+            console.log(`Config migration successful from: ${usedSources.join(', ')}`);
+        }
     } catch (err) {
         console.error('Fatal error during config migration:', err);
     }
@@ -241,6 +246,8 @@ module.exports = {
     setIsBatchOcrRunning,
     getIsScreensaverRunning,
     setIsScreensaverRunning,
+    getTrayHeartbeat,
+    setTrayHeartbeat,
     getScreensaverSystemEnabled,
     setScreensaverSystemEnabled,
     getScreensaverTimeout,
@@ -263,9 +270,14 @@ module.exports = {
     setAutostart,
     getChatGptApiKey,
     setChatGptApiKey,
+    getAiSummaryModel,
+    setAiSummaryModel,
+    getAiSummaryMaxPromptTokens,
+    setAiSummaryMaxPromptTokens,
     getLanguage,
     setLanguage,
     getScreenshotFormat,
     setScreenshotFormat,
     getBaseDir
 };
+

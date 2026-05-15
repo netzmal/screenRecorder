@@ -59,6 +59,106 @@ function makePathsAbsolute(files) {
     return result;
 }
 
+function parseFilesJson(files, fallback = {}) {
+    if (!files) return fallback;
+    if (typeof files === 'object') return files;
+    if (typeof files !== 'string') return fallback;
+
+    try {
+        const parsed = JSON.parse(files);
+        return parsed && typeof parsed === 'object' ? parsed : fallback;
+    } catch (e) {
+        const fileList = files.split(' | ').map(item => item.trim()).filter(Boolean);
+        if (fileList.length === 0) return fallback;
+
+        return fileList.reduce((result, filePath, index) => {
+            result[index] = filePath;
+            return result;
+        }, {});
+    }
+}
+
+function getAbsoluteFiles(files) {
+    return makePathsAbsolute(parseFilesJson(files));
+}
+
+function getLegacyImportFingerprints(db) {
+    try {
+        const row = db.prepare("SELECT value FROM settings WHERE key = 'legacy_db_imports'").get();
+        return row ? JSON.parse(row.value) : [];
+    } catch (e) {
+        return [];
+    }
+}
+
+function saveLegacyImportFingerprints(db, fingerprints) {
+    db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('legacy_db_imports', ?)").run(JSON.stringify(fingerprints));
+}
+
+function getLegacyDbFingerprint(dbPath) {
+    const stats = fs.statSync(dbPath);
+    return `${path.resolve(dbPath).toLowerCase()}|${stats.size}|${Math.floor(stats.mtimeMs)}`;
+}
+
+function mergeLegacyDatabases(db, currentDbPath, legacyDbPaths) {
+    const importedFingerprints = new Set(getLegacyImportFingerprints(db));
+    let importedAnything = false;
+
+    legacyDbPaths.forEach(legacyPath => {
+        try {
+            if (!fs.existsSync(legacyPath)) return;
+            if (path.resolve(legacyPath).toLowerCase() === path.resolve(currentDbPath).toLowerCase()) return;
+
+            const fingerprint = getLegacyDbFingerprint(legacyPath);
+            if (importedFingerprints.has(fingerprint)) return;
+
+            const legacyDb = new Database(legacyPath, { readonly: true, fileMustExist: true });
+            try {
+                const table = legacyDb.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'captures'").get();
+                if (!table) return;
+
+                const rows = legacyDb.prepare("SELECT * FROM captures").all();
+                const importTransaction = db.transaction((items) => {
+                    items.forEach(row => {
+                        if (!row.date || !row.time) return;
+
+                        const files = parseFilesJson(row.files);
+                        const data = {
+                            date: row.date,
+                            time: row.time,
+                            timestamp: row.timestamp || Date.now()
+                        };
+
+                        if (row.titles) data.titles = row.titles;
+                        if (row.activeWindow) data.activeWindow = row.activeWindow;
+                        if (row.openFiles) data.openFiles = row.openFiles;
+                        if (row.urls) data.urls = row.urls;
+                        if (row.calls) data.calls = row.calls;
+                        if (row.ocrText !== undefined && row.ocrText !== null) data.ocrText = row.ocrText;
+                        if (row.uiText !== undefined && row.uiText !== null) data.uiText = row.uiText;
+                        if (Object.keys(files).length > 0) data.files = files;
+
+                        saveCapture(data);
+                    });
+                });
+
+                importTransaction(rows);
+                importedFingerprints.add(fingerprint);
+                importedAnything = true;
+                console.log(`Imported ${rows.length} captures from legacy database: ${legacyPath}`);
+            } finally {
+                legacyDb.close();
+            }
+        } catch (e) {
+            console.error(`Failed to import legacy database ${legacyPath}:`, e);
+        }
+    });
+
+    if (importedAnything) {
+        saveLegacyImportFingerprints(db, [...importedFingerprints]);
+    }
+}
+
 function initDb() {
     if (db) return db;
 
@@ -78,41 +178,33 @@ function initDb() {
     const screenshotDir = getConfigDir();
     const oldDbPathInPictures = path.join(screenshotDir, 'screenRecorder', 'metadata.db');
     const oldDbPathInPicturesRoot = path.join(screenshotDir, 'metadata.db');
+    const legacyDbPaths = [
+        oldDbPathInPictures,
+        oldDbPathInPicturesRoot,
+        path.join(appDataDir, '..', 'screen-recorder-tray', 'metadata.db'),
+        path.join(appDataDir, '..', 'screen-recorder-viewer', 'metadata.db')
+    ];
 
     [oldDbPathInPictures, oldDbPathInPicturesRoot].forEach(oldPath => {
         if (fs.existsSync(oldPath) && !fs.existsSync(dbPath)) {
             try {
                 console.log(`Migrating database from ${oldPath} to ${dbPath}`);
                 fs.copyFileSync(oldPath, dbPath);
-                try {
-                    // Delete the old file because it should now be in AppData.
-                    fs.unlinkSync(oldPath);
-                } catch (e) {
-                    console.error(`Konnte alte DB unter ${oldPath} nicht löschen:`, e);
-                }
+                // Keep the old file as a backup until the user removes it manually.
+                console.log(`Legacy database left in place after copy: ${oldPath}`);
             } catch (e) {
-                console.error(`Fehler bei der DB-Migration von ${oldPath}:`, e);
+                console.error(`Migration from ${oldPath} failed:`, e);
             }
         }
     });
 
     // Migration from other possible AppData locations (tray/viewer), kept as a safety net.
-    const otherDbPaths = [
-        path.join(appDataDir, '..', 'screen-recorder-tray', 'metadata.db'),
-        path.join(appDataDir, '..', 'screen-recorder-viewer', 'metadata.db')
-    ];
+    const otherDbPaths = legacyDbPaths.slice(2);
     otherDbPaths.forEach(otherPath => {
         if (fs.existsSync(otherPath) && !fs.existsSync(dbPath)) {
             try {
                 console.log(`Migrating database from ${otherPath} to ${dbPath}`);
                 fs.copyFileSync(otherPath, dbPath);
-                try {
-                    fs.unlinkSync(otherPath);
-                } catch (e) {}
-            } catch (e) {}
-        } else if (fs.existsSync(otherPath) && fs.existsSync(dbPath)) {
-            try {
-                fs.unlinkSync(otherPath);
             } catch (e) {}
         }
     });
@@ -239,7 +331,7 @@ function initDb() {
                 
                 rows.forEach(row => {
                     try {
-                        const files = JSON.parse(row.files);
+                        const files = parseFilesJson(row.files);
                         let changed = false;
                         const isArray = Array.isArray(files);
                         const newFiles = isArray ? [] : {};
@@ -273,7 +365,7 @@ function initDb() {
                 
                 rows.forEach(row => {
                     try {
-                        const files = JSON.parse(row.files || '{}');
+                        const files = parseFilesJson(row.files);
                         let changed = false;
                         const newFiles = Array.isArray(files) ? [] : {};
 
@@ -338,6 +430,18 @@ function initDb() {
                     `);
                 }
             }
+        },
+        {
+            version: 10,
+            description: "Add daily_summaries table",
+            run: (db) => {
+                db.exec(`
+                    CREATE TABLE IF NOT EXISTS daily_summaries (
+                        date TEXT PRIMARY KEY,
+                        summary TEXT
+                    )
+                `);
+            }
         }
     ];
 
@@ -363,6 +467,8 @@ function initDb() {
         const latestVersion = migrations.length > 0 ? Math.max(...migrations.map(m => m.version)) : 0;
         db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('schema_version', ?)").run(latestVersion.toString());
     }
+
+    mergeLegacyDatabases(db, dbPath, legacyDbPaths);
 
     return db;
 }
@@ -495,10 +601,9 @@ function searchCaptures(query) {
     const search = db.prepare(sql);
     
     return search.all(sqlQuery, sqlQuery, sqlQuery, sqlQuery, sqlQuery, sqlQuery, sqlQuery).map(row => {
-        const parsedFiles = JSON.parse(row.files || '{}');
         return {
             ...row,
-            files: makePathsAbsolute(parsedFiles),
+            files: getAbsoluteFiles(row.files),
             // Mapping for viewer compatibility.
             meta: {
                 titles: parseMetadata(row.titles),
@@ -519,10 +624,9 @@ function getAllCaptures() {
     console.log(`[SQL] ${sql}`);
     const stmt = db.prepare(sql);
     return stmt.all().map(row => {
-        const parsedFiles = JSON.parse(row.files || '{}');
         return {
             id: row.id,
-            files: makePathsAbsolute(parsedFiles)
+            files: getAbsoluteFiles(row.files)
         };
     });
 }
@@ -534,10 +638,9 @@ function getRandomCaptures(limit = 100) {
         console.log(`[SQL] ${sql} (${limit})`);
         const stmt = db.prepare(sql);
         return stmt.all(limit).map(row => {
-            const parsedFiles = JSON.parse(row.files || '{}');
             return {
                 id: row.id,
-                files: makePathsAbsolute(parsedFiles)
+                files: getAbsoluteFiles(row.files)
             };
         });
     } catch (e) {
@@ -562,11 +665,9 @@ function getDayCaptures(date) {
         const stmt = db.prepare(sql);
         const rows = stmt.all(date);
         return rows.map(row => {
-            const parsedFiles = JSON.parse(row.files || '{}');
-            
             return {
                 ...row,
-                files: makePathsAbsolute(parsedFiles),
+                files: getAbsoluteFiles(row.files),
                 meta: {
                     titles: parseMetadata(row.titles),
                     activeWindow: row.activeWindow,
@@ -593,8 +694,7 @@ function getCaptureByDateTime(date, time) {
         const row = stmt.get(date, time);
         if (row) {
             console.log(`[DB] Found capture for ${date} ${time} (ID: ${row.id})`);
-            const parsedFiles = JSON.parse(row.files || '{}');
-            row.files = makePathsAbsolute(parsedFiles);
+            row.files = getAbsoluteFiles(row.files);
             row.meta = {
                 titles: parseMetadata(row.titles),
                 activeWindow: row.activeWindow,
@@ -649,7 +749,7 @@ function getOcrStats() {
 function countCaptureFiles(files) {
     if (!files) return 1;
     try {
-        const parsed = typeof files === 'string' ? JSON.parse(files) : files;
+        const parsed = parseFilesJson(files);
         const count = Object.values(parsed || {}).filter(Boolean).length;
         return count > 0 ? count : 1;
     } catch (e) {
@@ -690,15 +790,14 @@ function getOcrImageStats() {
 function getRandomOcrCaptures(limit = 10, processed = true) {
     try {
         const db = initDb();
-        const condition = processed ? "ocrText IS NOT NULL" : "ocrText IS NULL";
+        const condition = processed ? "ocrText IS NOT NULL AND ocrText != 'OCR processing...'" : "(ocrText IS NULL OR ocrText = 'OCR processing...')";
         const sql = `SELECT id, files FROM captures WHERE ${condition} ORDER BY RANDOM() LIMIT ?`;
         console.log(`[SQL] ${sql} (${limit})`);
         const stmt = db.prepare(sql);
         return stmt.all(limit).map(row => {
-            const parsedFiles = JSON.parse(row.files || '{}');
             return {
                 id: row.id,
-                files: makePathsAbsolute(parsedFiles)
+                files: getAbsoluteFiles(row.files)
             };
         });
     } catch (e) {
@@ -721,14 +820,7 @@ function getPendingOcrCaptures(limit = 100) {
         const rows = stmt.all(limit);
         
         return rows.map(row => {
-            if (row.files) {
-                try {
-                    const filesObj = JSON.parse(row.files);
-                    row.files = makePathsAbsolute(filesObj);
-                } catch (e) {
-                    row.files = {};
-                }
-            }
+            row.files = getAbsoluteFiles(row.files);
             return row;
         });
     } catch (e) {
@@ -761,6 +853,28 @@ function resetOcrStatus() {
         return true;
     } catch (e) {
         console.error("Error resetting OCR status:", e);
+        return false;
+    }
+}
+
+function getDailySummaryResult(date) {
+    try {
+        const db = initDb();
+        const row = db.prepare("SELECT summary FROM daily_summaries WHERE date = ?").get(date);
+        return row ? row.summary : null;
+    } catch (e) {
+        console.error("Error getting daily summary:", e);
+        return null;
+    }
+}
+
+function saveDailySummary(date, summary) {
+    try {
+        const db = initDb();
+        db.prepare("INSERT OR REPLACE INTO daily_summaries (date, summary) VALUES (?, ?)").run(date, summary);
+        return true;
+    } catch (e) {
+        console.error("Error saving daily summary:", e);
         return false;
     }
 }
@@ -918,6 +1032,8 @@ module.exports = {
     updateOcrText,
     resetOcrStatus,
     getDaySummary,
+    getDailySummaryResult,
+    saveDailySummary,
     getDayUrls,
     getDayCalls,
     getDayCaptures

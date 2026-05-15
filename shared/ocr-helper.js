@@ -19,6 +19,20 @@ function normalizeOcrError(text) {
     return trimmed.startsWith('Error:') ? trimmed : `Error: ${trimmed}`;
 }
 
+function normalizePathKey(filePath) {
+    return path.normalize(filePath).toLowerCase();
+}
+
+function markPathsAsError(paths, message, results, batchResults = null) {
+    const errorText = normalizeOcrError(message);
+    paths.forEach(filePath => {
+        const key = normalizePathKey(filePath);
+        if (results[key] !== undefined) return;
+        results[key] = errorText;
+        if (batchResults) batchResults[key] = errorText;
+    });
+}
+
 /**
  * Runs Windows native OCR through PowerShell.
  * @param {string[]} imagePaths
@@ -45,6 +59,7 @@ async function runWindowsOcrBatch(imagePaths, scriptPath, onProgress = null) {
 
             const currentBatch = imagePaths.slice(processedCount, processedCount + batchSize);
             const validPaths = currentBatch.filter(p => fs.existsSync(p));
+            const missingPaths = currentBatch.filter(p => !fs.existsSync(p));
 
             if (onProgress) {
                 onProgress({
@@ -57,6 +72,7 @@ async function runWindowsOcrBatch(imagePaths, scriptPath, onProgress = null) {
             }
 
             if (validPaths.length === 0) {
+                markPathsAsError(missingPaths, 'File not found', results);
                 processedCount += batchSize;
                 processNextBatch();
                 return;
@@ -85,6 +101,7 @@ async function runWindowsOcrBatch(imagePaths, scriptPath, onProgress = null) {
                     }
 
                     const batchResults = {};
+                    markPathsAsError(missingPaths, 'File not found', results, batchResults);
                     if (stdout) {
                         const sections = stdout.split('---START---');
                         sections.forEach(section => {
@@ -94,7 +111,7 @@ async function runWindowsOcrBatch(imagePaths, scriptPath, onProgress = null) {
                                 const errorMatch = section.match(/ERROR:(.*)/);
 
                                 if (pathMatch) {
-                                    const p = path.normalize(pathMatch[1].trim()).toLowerCase();
+                                    const p = normalizePathKey(pathMatch[1].trim());
                                     if (textMatch) {
                                         const text = textMatch[1].trim();
                                         const value = isOcrErrorText(text) ? normalizeOcrError(text) : text;
@@ -109,6 +126,11 @@ async function runWindowsOcrBatch(imagePaths, scriptPath, onProgress = null) {
                                 }
                             }
                         });
+                    }
+
+                    if (error) {
+                        const message = stderr || error.message || 'Windows OCR failed';
+                        markPathsAsError(validPaths, message, results, batchResults);
                     }
 
                     processedCount += batchSize;
@@ -133,6 +155,8 @@ async function runWindowsOcrBatch(imagePaths, scriptPath, onProgress = null) {
                         fs.unlinkSync(listFile); 
                     }
                 } catch (e) {}
+                markPathsAsError(validPaths, err.message || 'Windows OCR could not be started', results);
+                markPathsAsError(missingPaths, 'File not found', results);
                 processedCount += batchSize;
                 processNextBatch();
             }
