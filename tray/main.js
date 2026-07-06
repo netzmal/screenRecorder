@@ -11,7 +11,7 @@ const screenshot = require('screenshot-desktop');
 const crypto = require('crypto');
 const Tesseract = require('tesseract.js');
 const { spawn } = require('child_process');
-const { getConfigDir, getInterval, getOnlyOnChanges, getOcrEnabled, getOcrLanguage, store, getScreenshotOnWindowChange, getWindowChangeDelay, getScreenshotOnDisplayChange, getDisplayChangeDelay, getSkipOnPowerSave, getOcrFastMode, getIsBatchOcrRunning, getIsScreensaverRunning, getLanguage, getScreenshotFormat, setLastIndexingTime, setTrayHeartbeat } = require('../shared/config');
+const { getConfigDir, getInterval, getOnlyOnChanges, getOcrEnabled, getOcrLanguage, store, getScreenshotOnWindowChange, getWindowChangeDelay, getScreenshotOnDisplayChange, getDisplayChangeDelay, getSkipOnPowerSave, getOcrFastMode, getIsBatchOcrRunning, getIsScreensaverRunning, setIsScreensaverRunning, getScreensaverHeartbeat, setScreensaverHeartbeat, getLanguage, getScreenshotFormat, setLastIndexingTime, setTrayHeartbeat } = require('../shared/config');
 const { saveCapture, saveCapturesBatch, initDb, getAllCaptures, deleteCapture, getPendingOcrCount } = require('../shared/db');
 const i18n = require('../shared/i18n');
 const { runWindowsOcrBatch } = require('../shared/ocr-helper');
@@ -95,10 +95,41 @@ let pauseController = null;
 let trayHeartbeatInterval = null;
 let screenshotCaptureRunning = false;
 let screenshotCapturePending = false;
+let loggedStaleScreensaverState = false;
+const SCREENSAVER_HEARTBEAT_MAX_AGE_MS = 60000;
 
 // Updates the shared tray heartbeat so the viewer can detect a running tray process reliably.
 function updateTrayHeartbeat() {
     setTrayHeartbeat(Date.now());
+}
+
+// Returns true only while the screensaver process is actively refreshing its state.
+function isScreensaverPauseActive() {
+    if (!getIsScreensaverRunning()) {
+        loggedStaleScreensaverState = false;
+        return false;
+    }
+
+    const heartbeat = getScreensaverHeartbeat();
+    const heartbeatAgeMs = Date.now() - heartbeat;
+    if (heartbeat && heartbeatAgeMs >= 0 && heartbeatAgeMs < SCREENSAVER_HEARTBEAT_MAX_AGE_MS) {
+        loggedStaleScreensaverState = false;
+        return true;
+    }
+
+    if (!loggedStaleScreensaverState) {
+        logDebug('Ignoring stale screensaver running flag because no recent screensaver heartbeat was found.');
+        loggedStaleScreensaverState = true;
+    }
+
+    try {
+        setIsScreensaverRunning(false);
+        setScreensaverHeartbeat(0);
+    } catch (err) {
+        logDebug(`Failed to clear stale screensaver state: ${err.message}`);
+    }
+
+    return false;
 }
 
 async function getOcrWorker() {
@@ -620,7 +651,7 @@ async function takeScreenshots(onNewScreenshots) {
 
         // Check if we should skip screenshots during batch OCR or if screensaver is active.
         const isBatchRunning = getIsBatchOcrRunning();
-        const isScreensaverRunning = getIsScreensaverRunning();
+        const isScreensaverRunning = isScreensaverPauseActive();
 
         if (isScreensaverRunning || isBatchRunning) {
             if (isScreensaverRunning) {
@@ -734,6 +765,7 @@ async function takeScreenshots(onNewScreenshots) {
         }
     } catch (err) {
         console.error('Screenshot failed', err);
+        logDebug(`Screenshot failed: ${err.stack || err.message}`);
         const intervalSeconds = getInterval();
         if (!nextScreenshotTime || nextScreenshotTime <= Date.now()) {
             nextScreenshotTime = Date.now() + intervalSeconds * 1000;

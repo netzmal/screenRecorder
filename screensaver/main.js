@@ -26,7 +26,7 @@ const fs = require('fs');
 const { execFile } = require('child_process');
 const Tesseract = require('tesseract.js');
 const { initDb, getPendingOcrCaptures, updateOcrText, getAllCaptures, getOcrImageStats, getRandomOcrCaptures, resetOcrStatus } = require('../shared/db');
-const { getConfigDir, setIsScreensaverRunning, getOcrLanguage, getOcrFastMode, getOcrEnabled } = require('../shared/config');
+const { getConfigDir, setIsScreensaverRunning, setScreensaverHeartbeat, getOcrLanguage, getOcrFastMode, getOcrEnabled } = require('../shared/config');
 const { runWindowsOcrBatch, isOcrErrorText } = require('../shared/ocr-helper');
 
 // --- OCR Logging ---
@@ -66,6 +66,7 @@ let psbSuspendId = null;
 let tesseractWorker = null;
 let quittingAfterCleanup = false;
 let sessionStartTime = Date.now();
+let screensaverHeartbeatInterval = null;
 const previewParentHandle = getScreensaverPreviewParentHandle(process.argv);
 const isPreviewMode = process.argv.some(isScreensaverPreviewSwitch);
 
@@ -90,6 +91,11 @@ function getScreensaverPreviewParentHandle(argv) {
     }
 
     return null;
+}
+
+// Updates the shared screensaver heartbeat so stale running flags can be ignored.
+function updateScreensaverHeartbeat() {
+    setScreensaverHeartbeat(Date.now());
 }
 
 // Normalizes a Windows HWND argument into a decimal string.
@@ -370,9 +376,15 @@ async function closeScreensaver(reason = 'unknown') {
     if (!isPreviewMode) {
         try {
             setIsScreensaverRunning(false);
+            setScreensaverHeartbeat(0);
         } catch (err) {
             console.error('Screensaver: Failed to clear running state:', err);
         }
+    }
+
+    if (screensaverHeartbeatInterval) {
+        clearInterval(screensaverHeartbeatInterval);
+        screensaverHeartbeatInterval = null;
     }
 
     if (ocrTimer) {
@@ -719,6 +731,8 @@ app.whenReady().then(async () => {
 
         ocrLog('[INFO] Starting in NORMAL mode');
         setIsScreensaverRunning(true);
+        updateScreensaverHeartbeat();
+        screensaverHeartbeatInterval = setInterval(updateScreensaverHeartbeat, 5000);
 
         try {
             await resetOcrStatus();

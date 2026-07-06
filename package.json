@@ -1,7 +1,7 @@
 {
   "name": "screen-recorder",
   "productName": "Screen Recorder",
-  "version": "1.0.97",
+  "version": "1.0.98",
   "description": "Screen recording with text recognition and screensaver OCR",
   "author": "Tim David Saxen",
   "main": "viewer/main.js",
@@ -58,7 +58,8 @@
     },
     "asar": true,
     "asarUnpack": [
-      "shared/*.ps1"
+      "shared/*.ps1",
+      "node_modules/screenshot-desktop/lib/win32/**"
     ],
     "nsis": {
       "oneClick": false,

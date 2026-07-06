@@ -111,6 +111,10 @@ const setIsBatchOcrRunning = (value) => store.set('isBatchOcrRunning', value);
 const getIsScreensaverRunning = () => store.get('isScreensaverRunning', false);
 const setIsScreensaverRunning = (value) => store.set('isScreensaverRunning', value);
 
+// Tracks whether the screensaver process is actively updating its running state.
+const getScreensaverHeartbeat = () => store.get('screensaverHeartbeat', 0);
+const setScreensaverHeartbeat = (timestamp) => store.set('screensaverHeartbeat', timestamp);
+
 // Reads the last timestamp written by the tray recorder process.
 const getTrayHeartbeat = () => store.get('trayHeartbeat', 0);
 // Stores the current tray recorder heartbeat timestamp.
@@ -246,6 +250,8 @@ module.exports = {
     setIsBatchOcrRunning,
     getIsScreensaverRunning,
     setIsScreensaverRunning,
+    getScreensaverHeartbeat,
+    setScreensaverHeartbeat,
     getTrayHeartbeat,
     setTrayHeartbeat,
     getScreensaverSystemEnabled,
